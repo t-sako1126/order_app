@@ -41,18 +41,17 @@ function notify(message, persistent = false) {
   if (!persistent) noticeTimer = setTimeout(() => { notice.hidden = true; }, 4500);
 }
 
-function heading(eyebrow, title, lead) {
-  return `<div class="page-heading"><div><p class="eyebrow">${eyebrow}</p><h1>${title}</h1><p class="lead">${lead}</p></div></div>`;
+function heading(title) {
+  return `<div class="page-heading"><h1>${title}</h1></div>`;
 }
 
 function summary(review = false) {
   const total = totals(state.products);
-  return `<aside class="summary ${review ? 'review-summary' : 'list-summary'}" aria-label="今回の発注の集計"><p class="eyebrow">今回の発注</p>
-    <div class="summary-total"><strong id="total-count">${total.count}</strong><span>商品${review ? '' : 'を選択中'}</span></div>
+  return `<aside class="summary ${review ? 'review-summary' : 'list-summary'}" aria-label="今回の発注の集計"><h2 class="summary-title">今回の発注</h2>
+    <div class="summary-total"><strong id="total-count">${total.count}</strong><span>商品</span></div>
     <div class="summary-line"><span>発注先</span><strong id="total-suppliers">${total.suppliers} 業者</strong></div>
     <div class="summary-line"><span>合計数量</span><strong id="total-quantity">${total.quantity}</strong></div>
     ${review ? '<button class="primary" data-action="copy">発注内容をコピー</button><a href="#list" class="summary-back">数量を変更する</a>' : `<button class="primary" data-action="review" ${total.count ? '' : 'disabled'}>発注内容を確認</button>`}
-    <p class="save-caption">${review ? '確認・コピー用の一覧です．<br>業者への送信は行いません．' : '選択した内容はこのブラウザに保存されます．'}</p>
   </aside>`;
 }
 
@@ -67,28 +66,28 @@ function listView() {
         <textarea class="product-note" data-note="${escape(p.id)}" aria-label="${escape(p.name)}の備考" rows="1" maxlength="500" placeholder="備考を追加（任意）">${escape(p.note)}</textarea></div>
         <div class="stepper" role="group" aria-label="${escape(p.name)}の数量"><button data-delta="-1" data-id="${escape(p.id)}" aria-label="${escape(p.name)}を1減らす" ${p.quantity === 0 ? 'disabled' : ''}>−</button>
         <output aria-label="${escape(p.name)}の数量">${p.quantity}</output><button class="plus" data-delta="1" data-id="${escape(p.id)}" aria-label="${escape(p.name)}を1増やす" ${p.quantity === MAX_QUANTITY ? 'disabled' : ''}>＋</button></div></div>`).join('')}</article>`).join('')}
-    ${state.products.length ? '' : '<div class="empty"><h2>商品を登録しましょう</h2><p>商品名と業者名を登録すると，<br>ここから発注数量を選べます．</p><a href="#add" class="primary">最初の商品を追加</a></div>'}
+    ${state.products.length ? '' : '<div class="empty"><h2>商品がありません</h2><a href="#add" class="primary">最初の商品を追加</a></div>'}
     </section>${summary()}</div>`;
 }
 
 function reviewView() {
   const selected = groups(state.products, true);
-  return heading('発注前の確認', '発注内容の確認', '数量と備考を，発注前にもう一度確認してください．')
-    + (selected.length ? `<div class="workspace"><section aria-label="発注する商品"><div class="review-note">数量を選択した商品だけを，業者ごとにまとめています．</div>
+  return heading('発注内容の確認')
+    + (selected.length ? `<div class="workspace"><section aria-label="発注する商品">
       ${selected.map(({ supplier, items }) => `<article class="supplier-card"><div class="supplier-heading"><h2>${escape(supplier)}</h2><span>${items.length} 商品</span></div>
       ${items.map(p => `<div class="review-row"><div class="product-info"><h3 class="product-name">${escape(p.name)}</h3>${p.note ? `<p class="note">${escape(p.note)}</p>` : ''}</div><div class="review-quantity"><span class="quantity-sign">×</span> ${p.quantity}</div></div>`).join('')}</article>`).join('')}
       <button class="text-link" data-action="reset">選択した数量をすべて0に戻す</button>
-      </section>${summary(true)}</div>` : '<div class="empty"><h2>まだ商品が選ばれていません</h2><p>発注リストの「＋」で数量を選ぶと，<br>ここに確認用の一覧が表示されます．</p><a href="#list" class="primary">発注リストへ</a></div>');
+      </section>${summary(true)}</div>` : '<div class="empty"><h2>商品が選択されていません</h2><a href="#list" class="primary">発注リストへ</a></div>');
 }
 
 function addView() {
-  return heading('商品登録', '商品を追加', 'いつも発注する商品を，リストに登録しましょう．')
+  return heading('商品を追加')
     + `<div class="form-layout"><form id="product-form" class="product-form">
       <div class="field"><label for="product-name">商品名<span>必須</span></label><input id="product-name" name="name" placeholder="例：鶏もも肉" required maxlength="80" autocomplete="off"></div>
-      <div class="field"><label for="supplier-name">業者名<span>必須</span></label><input id="supplier-name" name="supplier" placeholder="例：肉屋" required maxlength="80" list="suppliers" autocomplete="off"><datalist id="suppliers">${groups(state.products).map(g => `<option value="${escape(g.supplier)}"></option>`).join('')}</datalist><p>登録済みの業者名も選べます．</p></div>
-      <div class="field"><label for="product-note">備考<span>任意</span></label><textarea id="product-note" name="note" maxlength="500" placeholder="規格や発注時の注意点など\n例：1kgパック，薄切り"></textarea><p>発注リストからも編集できます．</p></div>
+      <div class="field"><label for="supplier-name">業者名<span>必須</span></label><input id="supplier-name" name="supplier" placeholder="例：肉屋" required maxlength="80" list="suppliers" autocomplete="off"><datalist id="suppliers">${groups(state.products).map(g => `<option value="${escape(g.supplier)}"></option>`).join('')}</datalist></div>
+      <div class="field"><label for="product-note">備考<span>任意</span></label><textarea id="product-note" name="note" maxlength="500" placeholder="例：1kgパック，薄切り"></textarea></div>
       <p id="form-error" class="error" role="alert" hidden></p><button class="primary" type="submit">商品を登録する</button>
-    </form><aside class="form-aside"><h2>次の発注を，少し楽に．</h2><p>登録した商品は業者ごとにまとまります．<br>数量は0からスタート．必要なときに，必要な分だけ選べます．</p><p>商品と備考はこのブラウザに保存されます．</p>${state.products.some(p => p.sample) ? '<button class="text-link" type="button" data-action="clear-samples">サンプル商品を削除</button>' : ''}</aside></div>`;
+    </form>${state.products.some(p => p.sample) ? '<button class="text-link" type="button" data-action="clear-samples">サンプル商品を削除</button>' : ''}</div>`;
 }
 
 function pageName() {
