@@ -1,4 +1,4 @@
-import { STORAGE_KEY, MAX_QUANTITY, sampleState, validateState, changeQuantity, groups, totals, orderText, prepareBulkProducts, supplierOrder, moveSupplier, searchProducts, exportCsv, prepareCsvImport } from './model.js?v=5';
+import { STORAGE_KEY, MAX_QUANTITY, sampleState, validateState, changeQuantity, groups, totals, orderText, prepareBulkProducts, supplierOrder, moveSupplier, searchProducts, exportCsv, prepareCsvImport } from './model.js?v=6';
 
 const main = document.querySelector('#main');
 const dialog = document.querySelector('#dialog');
@@ -10,7 +10,8 @@ let copyPending = false;
 let activeSupplierOption = -1;
 let productAddMode = 'single';
 let productQuery = '';
-let supplierSorting = false;
+let tabGesture = null;
+let suppressTabClick = false;
 let importPending = false;
 
 function load() {
@@ -76,9 +77,9 @@ function listView() {
   const supplierGroups = groups(state.products, false, state.supplierOrder);
   return `<div class="workspace"><section aria-label="業者別の商品一覧">
     <input id="product-search" class="product-search" type="search" aria-label="商品検索" placeholder="商品名で検索" value="${escape(productQuery)}" autocomplete="off">
-    <div class="list-tools"><button class="text-link" data-action="sort-suppliers" aria-pressed="${supplierSorting}" ${supplierGroups.length < 2 ? 'disabled' : ''}>${supplierSorting ? '並び替え完了' : '業者の並び替え'}</button><div class="csv-tools"><button class="text-link" data-action="csv-export" ${state.products.length ? '' : 'disabled'}>CSV書き出し</button><button class="text-link" data-action="csv-import">CSV読み込み</button></div></div>
+    <div class="list-tools"><div class="csv-tools"><button class="icon-button" data-action="csv-import" aria-label="CSVインポート" title="CSVインポート"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 15v5h16v-5"/></svg></button><button class="icon-button" data-action="csv-export" aria-label="CSVエクスポート" title="CSVエクスポート" ${state.products.length ? '' : 'disabled'}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m-4 4 4-4 4 4M4 15v5h16v-5"/></svg></button></div></div>
     ${state.products.length ? `<div class="filters" aria-label="業者の絞り込み"><button class="filter" data-filter-all aria-pressed="${activeSupplier === null}">すべて<span class="filter-count">${state.products.length}</span></button>
-    ${supplierGroups.map((g, index) => `<div class="supplier-tab"><button class="filter" data-filter="${escape(g.supplier)}" aria-pressed="${activeSupplier === g.supplier}">${escape(g.supplier)}<span class="filter-count">${g.items.length}</span></button>${supplierSorting ? `<div class="supplier-moves"><button data-move-supplier="${escape(g.supplier)}" data-direction="-1" aria-label="${escape(g.supplier)}を左へ移動" ${index === 0 ? 'disabled' : ''}>左</button><button data-move-supplier="${escape(g.supplier)}" data-direction="1" aria-label="${escape(g.supplier)}を右へ移動" ${index === supplierGroups.length - 1 ? 'disabled' : ''}>右</button></div>` : ''}</div>`).join('')}</div>` : ''}
+    ${supplierGroups.map(g => `<button class="filter" data-filter="${escape(g.supplier)}" aria-pressed="${activeSupplier === g.supplier}" title="長押ししてドラッグで並び替え（キーボード：Alt＋左右）">${escape(g.supplier)}<span class="filter-count">${g.items.length}</span></button>`).join('')}</div>` : ''}
     <div id="product-results">${catalogueView()}</div>
     </section>${summary()}</div>`;
 }
@@ -111,6 +112,7 @@ function pageName() {
 }
 
 function render(focus = false) {
+  cancelTabGesture();
   const page = pageName();
   main.dataset.page = page;
   main.innerHTML = page === 'review' ? reviewView() : page === 'add' ? addView() : listView();
@@ -165,6 +167,106 @@ function selectSupplier(name) {
   input.focus({ preventScroll: true });
 }
 
+// Horizontal swipes scroll the tabs; holding a touch tab starts reordering.
+function cancelTabGesture() {
+  if (!tabGesture) return;
+  clearTimeout(tabGesture.timer);
+  cancelAnimationFrame(tabGesture.frame);
+  tabGesture.button?.classList.remove('dragging');
+  if (tabGesture.filters.hasPointerCapture(tabGesture.id)) tabGesture.filters.releasePointerCapture(tabGesture.id);
+  tabGesture = null;
+}
+
+function updateTabDrag() {
+  const g = tabGesture;
+  if (!g?.reordering) return;
+  const bounds = g.filters.getBoundingClientRect();
+  const edge = g.x < bounds.left + 28 ? -7 : g.x > bounds.right - 28 ? 7 : 0;
+  if (edge) g.filters.scrollLeft += edge;
+  const others = [...g.filters.querySelectorAll('[data-filter]')].filter(b => b !== g.button);
+  const before = others.find(b => { const r = b.getBoundingClientRect(); return g.x < r.left + r.width / 2; });
+  if (before) g.filters.insertBefore(g.button, before); else g.filters.append(g.button);
+  g.frame = requestAnimationFrame(updateTabDrag);
+}
+
+main.addEventListener('pointerdown', event => {
+  const filters = event.target.closest('.filters');
+  if (!filters || !event.isPrimary || event.button !== 0) return;
+  cancelTabGesture();
+  suppressTabClick = false;
+  const button = event.target.closest('[data-filter]');
+  const g = tabGesture = { filters, button, id: event.pointerId, startX: event.clientX,
+    startY: event.clientY, x: event.clientX, scroll: filters.scrollLeft, moved: false,
+    touch: event.pointerType !== 'mouse', reordering: false };
+  if (g.touch && button) g.timer = setTimeout(() => {
+    if (tabGesture !== g || g.moved) return;
+    g.reordering = true;
+    filters.setPointerCapture(g.id);
+    button.classList.add('dragging');
+    updateTabDrag();
+  }, 350);
+});
+
+main.addEventListener('pointermove', event => {
+  const g = tabGesture;
+  if (!g || g.id !== event.pointerId) return;
+  g.x = event.clientX;
+  const dx = g.x - g.startX;
+  const dy = event.clientY - g.startY;
+  if (!g.moved && !g.reordering && Math.hypot(dx, dy) > 7) {
+    g.moved = true;
+    g.filters.setPointerCapture(g.id);
+    clearTimeout(g.timer);
+    if (Math.abs(dy) > Math.abs(dx)) { cancelTabGesture(); return; }
+    if (!g.touch && g.button) {
+      g.reordering = true;
+      g.button.classList.add('dragging');
+      updateTabDrag();
+    }
+  }
+  if (g.moved || g.reordering) {
+    suppressTabClick = true;
+    if (!g.reordering) g.filters.scrollLeft = g.scroll - dx;
+  }
+});
+
+main.addEventListener('pointerup', event => {
+  const g = tabGesture;
+  if (!g || g.id !== event.pointerId) return;
+  const order = [...g.filters.querySelectorAll('[data-filter]')].map(b => b.dataset.filter);
+  const scroll = g.filters.scrollLeft;
+  const supplier = g.button?.dataset.filter;
+  const reordered = g.reordering;
+  suppressTabClick = g.moved || reordered;
+  setTimeout(() => { suppressTabClick = false; }, 0);
+  cancelTabGesture();
+  if (reordered) {
+    state.supplierOrder = order;
+    save(); render();
+    main.querySelector('.filters').scrollLeft = scroll;
+    [...main.querySelectorAll('[data-filter]')].find(b => b.dataset.filter === supplier)?.focus({ preventScroll: true });
+  }
+});
+main.addEventListener('pointercancel', () => {
+  const reorder = tabGesture?.reordering;
+  cancelTabGesture();
+  if (reorder) render();
+});
+main.addEventListener('contextmenu', event => {
+  if (event.target.closest('.filters')) event.preventDefault();
+});
+main.addEventListener('keydown', event => {
+  const button = event.target.closest('[data-filter]');
+  if (!button || !event.altKey || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+  event.preventDefault();
+  const supplier = button.dataset.filter;
+  const scroll = button.closest('.filters').scrollLeft;
+  state.supplierOrder = moveSupplier(state.products, state.supplierOrder, supplier, event.key === 'ArrowLeft' ? -1 : 1);
+  save(); render();
+  main.querySelector('.filters').scrollLeft = scroll;
+  [...main.querySelectorAll('[data-filter]')].find(b => b.dataset.filter === supplier)?.focus({ preventScroll: true });
+});
+
 main.addEventListener('focusin', event => {
   if (event.target.id === 'supplier-name') showSupplierOptions();
 });
@@ -216,6 +318,7 @@ main.addEventListener('click', async event => {
   if (event.target.id === 'supplier-name') { showSupplierOptions(); return; }
   const button = event.target.closest('button');
   if (!button) return;
+  if (button.closest('.filters') && suppressTabClick) { suppressTabClick = false; return; }
   if (button.dataset.action === 'csv-export') {
     const url = URL.createObjectURL(new Blob([exportCsv(state.products, state.supplierOrder)], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
@@ -224,18 +327,6 @@ main.addEventListener('click', async event => {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   } else if (button.dataset.action === 'csv-import') {
     if (!importPending) document.querySelector('#csv-file').click();
-  } else if (button.dataset.action === 'sort-suppliers') {
-    supplierSorting = !supplierSorting;
-    render();
-    main.querySelector('[data-action="sort-suppliers"]').focus({ preventScroll: true });
-  } else if (button.dataset.moveSupplier) {
-    const supplier = button.dataset.moveSupplier;
-    const scroll = main.querySelector('.filters').scrollLeft;
-    state.supplierOrder = moveSupplier(state.products, state.supplierOrder, supplier, Number(button.dataset.direction));
-    save(); render();
-    const filters = main.querySelector('.filters');
-    filters.scrollLeft = scroll;
-    [...filters.querySelectorAll('[data-filter]')].find(b => b.dataset.filter === supplier)?.focus({ preventScroll: true });
   } else if (button.dataset.addMode) {
     productAddMode = button.dataset.addMode;
     const bulk = productAddMode === 'bulk';

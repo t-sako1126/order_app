@@ -36,13 +36,13 @@ h1 { font-size: 32px; line-height: 1.4; letter-spacing: .025em; margin: 0; font-
 .workspace { display: grid; grid-template-columns: minmax(0, 1fr) 280px; align-items: start; gap: 32px; }
 .product-search { width: 100%; min-height: 52px; border: 1px solid var(--line); border-radius: 18px; padding: 15px 18px; background: var(--card); color: var(--ink); font-size: 16px; }
 .product-search::placeholder { color: var(--muted); }
-.list-tools { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin: 8px 0 12px; }
-.csv-tools { display: flex; gap: 18px; }
-.list-tools .text-link { font-size: 12px; }
-.supplier-tab { flex-shrink: 0; }
-.supplier-moves { display: flex; gap: 4px; margin-top: 6px; }
-.supplier-moves button { flex: 1; min-width: 44px; min-height: 44px; border-radius: 14px; background: var(--soft); font-size: 12px; }
-.filters { display: flex; gap: 8px; overflow-x: auto; padding: 0 2px 16px; margin-bottom: 8px; scrollbar-width: thin; }
+.list-tools { display: flex; justify-content: flex-end; margin: 6px 0 8px; }
+.csv-tools { display: flex; gap: 8px; }
+.icon-button { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 16px; background: var(--soft); color: var(--ink); }
+.icon-button svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.filters { display: flex; gap: 8px; overflow-x: auto; padding: 0 2px 16px; margin-bottom: 8px; scrollbar-width: thin; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.filters [data-filter] { cursor: grab; -webkit-touch-callout: none; }
+.filters .dragging { cursor: grabbing; background: var(--soft); box-shadow: 0 3px 10px #432d2020; }
 .filter { flex-shrink: 0; padding: 12px 20px; border-radius: 18px; background: transparent; font-size: 13px; min-height: 44px; }
 .filter[aria-pressed="true"] { background: var(--ink); color: var(--card); }
 .filter .filter-count { opacity: .65; margin-left: 8px; font-size: 11px; }
