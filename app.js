@@ -49,10 +49,9 @@ function heading(title) {
 function summary(review = false) {
   const total = totals(state.products);
   return `<aside class="summary ${review ? 'review-summary' : 'list-summary'}" aria-label="今回の発注の集計"><h2 class="summary-title">今回の発注</h2>
-    <div class="summary-total"><strong id="total-count">${total.count}</strong><span>商品</span></div>
     <div class="summary-line"><span>発注先</span><strong id="total-suppliers">${total.suppliers} 業者</strong></div>
-    <div class="summary-line"><span>合計数量</span><strong id="total-quantity">${total.quantity}</strong></div>
-    ${review ? '<button class="primary" data-action="copy">発注内容をコピー</button><a href="#list" class="summary-back">数量を変更する</a>' : `<button class="primary" data-action="review" ${total.count ? '' : 'disabled'}>発注内容を確認</button>`}
+    <div class="summary-line summary-quantity"><span>合計数量</span><strong id="total-quantity">${total.quantity}</strong></div>
+    ${review ? '<button class="primary" data-action="copy">発注内容をコピー</button><a href="#list" class="summary-back">数量を変更する</a>' : `<button class="primary" data-action="review" ${total.quantity ? '' : 'disabled'}>発注内容を確認</button>`}
   </aside>`;
 }
 
@@ -109,16 +108,14 @@ function render(focus = false) {
 function updateTotals() {
   const total = totals(state.products);
   const badge = document.querySelector('#nav-count');
-  badge.textContent = total.count;
-  badge.hidden = total.count === 0;
-  const count = document.querySelector('#total-count');
-  if (count) count.textContent = total.count;
+  badge.textContent = total.quantity;
+  badge.hidden = total.quantity === 0;
   const suppliers = document.querySelector('#total-suppliers');
   if (suppliers) suppliers.textContent = `${total.suppliers} 業者`;
   const quantity = document.querySelector('#total-quantity');
   if (quantity) quantity.textContent = total.quantity;
   const review = document.querySelector('[data-action="review"]');
-  if (review) review.disabled = total.count === 0;
+  if (review) review.disabled = total.quantity === 0;
 }
 
 function closeSupplierOptions() {
