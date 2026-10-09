@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#F7EDE2">
+    <title>発注ノート｜発注内容の確認</title>
+    <link rel="stylesheet" href="./styles.css">
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#list">発注ノート<span>日々の発注を，ひと目で．</span></a>
+      <nav aria-label="メインメニュー">
+        <a href="#list" data-page="list">発注リスト</a>
+        <a href="#review" data-page="review">内容確認<span class="nav-count" id="nav-count" hidden>0</span></a>
+        <a href="#add" data-page="add">商品追加</a>
+      </nav>
+    </header>
+    <main id="main" tabindex="-1"></main>
+    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+    <dialog id="dialog" aria-labelledby="dialog-title">
+      <form method="dialog">
+        <h2 id="dialog-title"></h2>
+        <p id="dialog-message"></p>
+        <textarea id="copy-fallback" aria-label="コピーする発注内容" readonly hidden></textarea>
+        <div class="dialog-actions"><button value="cancel" class="secondary">戻る</button><button id="dialog-confirm" value="confirm" class="primary">続ける</button></div>
+      </form>
+    </dialog>
+  </body>
+</html>
