@@ -33,6 +33,9 @@ export function sampleState() {
 
 export function validateState(state) {
   if (!state || state.version !== 1 || !Array.isArray(state.products)) return false;
+  if (state.supplierOrder !== undefined && (!Array.isArray(state.supplierOrder)
+    || state.supplierOrder.some(name => typeof name !== 'string' || !name.trim() || name.length > 80)
+    || new Set(state.supplierOrder).size !== state.supplierOrder.length)) return false;
   const ids = new Set();
   return state.products.every(p => {
     if (!p || typeof p.id !== 'string' || !p.id || ids.has(p.id)) return false;
@@ -49,14 +52,34 @@ export function changeQuantity(quantity, delta) {
   return Math.max(0, Math.min(MAX_QUANTITY, quantity + delta));
 }
 
-export function groups(products, selectedOnly = false) {
+export function supplierOrder(products, preferred = []) {
+  const present = new Set(products.map(p => p.supplier));
+  return [...new Set([...preferred, ...present])].filter(name => present.has(name));
+}
+
+export function moveSupplier(products, preferred, supplier, delta) {
+  const order = supplierOrder(products, preferred);
+  const from = order.indexOf(supplier);
+  const to = from + delta;
+  if (from >= 0 && to >= 0 && to < order.length) [order[from], order[to]] = [order[to], order[from]];
+  return order;
+}
+
+export function searchProducts(products, query) {
+  const normalize = text => text.normalize('NFKC').toLocaleLowerCase('ja');
+  const term = normalize(query.trim());
+  return products.filter(p => normalize(p.name).includes(term));
+}
+
+export function groups(products, selectedOnly = false, preferred = []) {
   const result = new Map();
   for (const product of products) {
     if (selectedOnly && product.quantity === 0) continue;
     if (!result.has(product.supplier)) result.set(product.supplier, []);
     result.get(product.supplier).push(product);
   }
-  return [...result].map(([supplier, items]) => ({ supplier, items }));
+  return supplierOrder(products, preferred).filter(supplier => result.has(supplier))
+    .map(supplier => ({ supplier, items: result.get(supplier) }));
 }
 
 export function totals(products) {
@@ -64,8 +87,70 @@ export function totals(products) {
   return { count: selected.length, quantity: selected.reduce((total, p) => total + p.quantity, 0), suppliers: new Set(selected.map(p => p.supplier)).size };
 }
 
-export function orderText(products) {
-  return ['発注内容', ...groups(products, true).map(({ supplier, items }) =>
+export function orderText(products, preferred = []) {
+  return ['発注内容', ...groups(products, true, preferred).map(({ supplier, items }) =>
     `\n【${supplier}】\n${items.map(p => `${p.name} × ${p.quantity}${p.note ? `\n  備考：${p.note}` : ''}`).join('\n')}`
   )].join('\n');
+}
+
+export function exportCsv(products, preferred = []) {
+  const quote = value => `"${value.replaceAll('"', '""')}"`;
+  const rows = [['業者名', '商品名', '備考'], ...groups(products, false, preferred)
+    .flatMap(g => g.items.map(p => [p.supplier, p.name, p.note]))];
+  return '\uFEFF' + rows.map(row => row.map(quote).join(',')).join('\r\n') + '\r\n';
+}
+
+export function parseCsv(text) {
+  text = text.replace(/^\uFEFF/, '');
+  const rows = [];
+  let row = [], field = '', quoted = false, closed = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (quoted) {
+      if (char === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else { quoted = false; closed = true; }
+      } else field += char;
+    } else if (char === ',' || char === '\n' || char === '\r') {
+      row.push(field); field = ''; closed = false;
+      if (char !== ',') {
+        rows.push(row); row = [];
+        if (char === '\r' && text[i + 1] === '\n') i++;
+      }
+    } else if (char === '"' && !field && !closed) quoted = true;
+    else {
+      if (char === '"' || closed) throw new Error('CSVの引用符の形式が正しくありません．');
+      field += char;
+    }
+  }
+  if (quoted) throw new Error('CSVの引用符が閉じられていません．');
+  if (field || row.length || closed) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+export function prepareCsvImport(text, products) {
+  const rows = parseCsv(text).filter(row => row.some(cell => cell.trim()));
+  const headers = rows.shift()?.map(cell => cell.trim());
+  if (!headers || headers.length !== 3 || new Set(headers).size !== 3
+    || !['業者名', '商品名', '備考'].every(name => headers.includes(name))) {
+    throw new Error('CSVの先頭行は「業者名,商品名,備考」にしてください．');
+  }
+  if (!rows.length) throw new Error('CSVに商品がありません．');
+  if (rows.length > 10000) throw new Error('CSVは10,000商品以内にしてください．');
+  const known = new Set(products.map(p => JSON.stringify([p.supplier, p.name])));
+  const additions = [];
+  let skipped = 0;
+  rows.forEach((row, index) => {
+    const supplier = row[headers.indexOf('業者名')]?.trim();
+    const name = row[headers.indexOf('商品名')]?.trim();
+    const note = row[headers.indexOf('備考')];
+    if (row.length !== 3 || !supplier || !name || supplier.length > 80 || name.length > 80 || note.length > 500) {
+      throw new Error(`CSVの${index + 2}行目を確認してください．業者名・商品名は1〜80文字，備考は500文字以内です．`);
+    }
+    const key = JSON.stringify([supplier, name]);
+    if (known.has(key)) { skipped++; return; }
+    known.add(key);
+    additions.push({ supplier, name, note, quantity: 0 });
+  });
+  return { additions, skipped };
 }

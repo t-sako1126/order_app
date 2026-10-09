@@ -1,4 +1,4 @@
-import { STORAGE_KEY, MAX_QUANTITY, sampleState, validateState, changeQuantity, groups, totals, orderText, prepareBulkProducts } from './model.js?v=4';
+import { STORAGE_KEY, MAX_QUANTITY, sampleState, validateState, changeQuantity, groups, totals, orderText, prepareBulkProducts, supplierOrder, moveSupplier, searchProducts, exportCsv, prepareCsvImport } from './model.js?v=5';
 
 const main = document.querySelector('#main');
 const dialog = document.querySelector('#dialog');
@@ -9,6 +9,9 @@ let noticeTimer;
 let copyPending = false;
 let activeSupplierOption = -1;
 let productAddMode = 'single';
+let productQuery = '';
+let supplierSorting = false;
+let importPending = false;
 
 function load() {
   try {
@@ -25,6 +28,7 @@ function load() {
 
 function save() {
   try {
+    state.supplierOrder = supplierOrder(state.products, state.supplierOrder);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     return true;
   } catch {
@@ -56,23 +60,31 @@ function summary(review = false) {
   </aside>`;
 }
 
+function catalogueView() {
+  const visible = groups(searchProducts(state.products, productQuery), false, state.supplierOrder)
+    .filter(g => activeSupplier === null || g.supplier === activeSupplier);
+  if (!state.products.length) return '<div class="empty"><h2>商品がありません</h2><a href="#add" class="primary">最初の商品を追加</a></div>';
+  if (!visible.length) return '<div class="empty"><h2>該当する商品がありません</h2></div>';
+  return visible.map(({ supplier, items }) => `<article class="supplier-card"><div class="supplier-heading"><h2>${escape(supplier)}</h2><span>${items.length} 商品</span></div>
+    ${items.map(p => `<div class="product-row" data-row="${escape(p.id)}"><div class="product-info"><h3 class="product-name">${escape(p.name)}</h3>
+      <textarea class="product-note" data-note="${escape(p.id)}" aria-label="${escape(p.name)}の備考" rows="1" maxlength="500" placeholder="備考を追加（任意）">${escape(p.note)}</textarea></div>
+      <div class="stepper" role="group" aria-label="${escape(p.name)}の数量"><button data-delta="-1" data-id="${escape(p.id)}" aria-label="${escape(p.name)}を1減らす" ${p.quantity === 0 ? 'disabled' : ''}>−</button>
+      <output aria-label="${escape(p.name)}の数量">${p.quantity}</output><button class="plus" data-delta="1" data-id="${escape(p.id)}" aria-label="${escape(p.name)}を1増やす" ${p.quantity === MAX_QUANTITY ? 'disabled' : ''}>＋</button></div></div>`).join('')}</article>`).join('');
+}
+
 function listView() {
-  const supplierGroups = groups(state.products);
-  const visible = supplierGroups.filter(g => activeSupplier === null || g.supplier === activeSupplier);
+  const supplierGroups = groups(state.products, false, state.supplierOrder);
   return `<div class="workspace"><section aria-label="業者別の商品一覧">
+    <input id="product-search" class="product-search" type="search" aria-label="商品検索" placeholder="商品名で検索" value="${escape(productQuery)}" autocomplete="off">
+    <div class="list-tools"><button class="text-link" data-action="sort-suppliers" aria-pressed="${supplierSorting}" ${supplierGroups.length < 2 ? 'disabled' : ''}>${supplierSorting ? '並び替え完了' : '業者の並び替え'}</button><div class="csv-tools"><button class="text-link" data-action="csv-export" ${state.products.length ? '' : 'disabled'}>CSV書き出し</button><button class="text-link" data-action="csv-import">CSV読み込み</button></div></div>
     ${state.products.length ? `<div class="filters" aria-label="業者の絞り込み"><button class="filter" data-filter-all aria-pressed="${activeSupplier === null}">すべて<span class="filter-count">${state.products.length}</span></button>
-    ${supplierGroups.map(g => `<button class="filter" data-filter="${escape(g.supplier)}" aria-pressed="${activeSupplier === g.supplier}">${escape(g.supplier)}<span class="filter-count">${g.items.length}</span></button>`).join('')}</div>` : ''}
-    ${visible.map(({ supplier, items }) => `<article class="supplier-card"><div class="supplier-heading"><h2>${escape(supplier)}</h2><span>${items.length} 商品</span></div>
-      ${items.map(p => `<div class="product-row" data-row="${escape(p.id)}"><div class="product-info"><h3 class="product-name">${escape(p.name)}</h3>
-        <textarea class="product-note" data-note="${escape(p.id)}" aria-label="${escape(p.name)}の備考" rows="1" maxlength="500" placeholder="備考を追加（任意）">${escape(p.note)}</textarea></div>
-        <div class="stepper" role="group" aria-label="${escape(p.name)}の数量"><button data-delta="-1" data-id="${escape(p.id)}" aria-label="${escape(p.name)}を1減らす" ${p.quantity === 0 ? 'disabled' : ''}>−</button>
-        <output aria-label="${escape(p.name)}の数量">${p.quantity}</output><button class="plus" data-delta="1" data-id="${escape(p.id)}" aria-label="${escape(p.name)}を1増やす" ${p.quantity === MAX_QUANTITY ? 'disabled' : ''}>＋</button></div></div>`).join('')}</article>`).join('')}
-    ${state.products.length ? '' : '<div class="empty"><h2>商品がありません</h2><a href="#add" class="primary">最初の商品を追加</a></div>'}
+    ${supplierGroups.map((g, index) => `<div class="supplier-tab"><button class="filter" data-filter="${escape(g.supplier)}" aria-pressed="${activeSupplier === g.supplier}">${escape(g.supplier)}<span class="filter-count">${g.items.length}</span></button>${supplierSorting ? `<div class="supplier-moves"><button data-move-supplier="${escape(g.supplier)}" data-direction="-1" aria-label="${escape(g.supplier)}を左へ移動" ${index === 0 ? 'disabled' : ''}>左</button><button data-move-supplier="${escape(g.supplier)}" data-direction="1" aria-label="${escape(g.supplier)}を右へ移動" ${index === supplierGroups.length - 1 ? 'disabled' : ''}>右</button></div>` : ''}</div>`).join('')}</div>` : ''}
+    <div id="product-results">${catalogueView()}</div>
     </section>${summary()}</div>`;
 }
 
 function reviewView() {
-  const selected = groups(state.products, true);
+  const selected = groups(state.products, true, state.supplierOrder);
   return heading('発注内容の確認')
     + (selected.length ? `<div class="workspace"><section aria-label="発注する商品">
       ${selected.map(({ supplier, items }) => `<article class="supplier-card"><div class="supplier-heading"><h2>${escape(supplier)}</h2><span>${items.length} 商品</span></div>
@@ -137,7 +149,7 @@ function showSupplierOptions(filter = false) {
   const options = document.querySelector('#supplier-options');
   if (!input || !options) return;
   const query = filter ? input.value.trim().toLocaleLowerCase('ja') : '';
-  const suppliers = groups(state.products).map(g => g.supplier)
+  const suppliers = groups(state.products, false, state.supplierOrder).map(g => g.supplier)
     .filter(name => name.toLocaleLowerCase('ja').includes(query));
   options.innerHTML = suppliers.map((name, index) => `<button type="button" class="supplier-option" id="supplier-option-${index}" role="option" aria-selected="false" tabindex="-1" data-supplier-option="${escape(name)}">${escape(name)}</button>`).join('');
   options.hidden = suppliers.length === 0;
@@ -204,7 +216,27 @@ main.addEventListener('click', async event => {
   if (event.target.id === 'supplier-name') { showSupplierOptions(); return; }
   const button = event.target.closest('button');
   if (!button) return;
-  if (button.dataset.addMode) {
+  if (button.dataset.action === 'csv-export') {
+    const url = URL.createObjectURL(new Blob([exportCsv(state.products, state.supplierOrder)], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url; link.download = '発注商品一覧.csv';
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } else if (button.dataset.action === 'csv-import') {
+    if (!importPending) document.querySelector('#csv-file').click();
+  } else if (button.dataset.action === 'sort-suppliers') {
+    supplierSorting = !supplierSorting;
+    render();
+    main.querySelector('[data-action="sort-suppliers"]').focus({ preventScroll: true });
+  } else if (button.dataset.moveSupplier) {
+    const supplier = button.dataset.moveSupplier;
+    const scroll = main.querySelector('.filters').scrollLeft;
+    state.supplierOrder = moveSupplier(state.products, state.supplierOrder, supplier, Number(button.dataset.direction));
+    save(); render();
+    const filters = main.querySelector('.filters');
+    filters.scrollLeft = scroll;
+    [...filters.querySelectorAll('[data-filter]')].find(b => b.dataset.filter === supplier)?.focus({ preventScroll: true });
+  } else if (button.dataset.addMode) {
     productAddMode = button.dataset.addMode;
     const bulk = productAddMode === 'bulk';
     document.querySelector('#single-product-fields').hidden = bulk;
@@ -253,14 +285,14 @@ main.addEventListener('click', async event => {
   } else if (button.dataset.action === 'copy' && !copyPending) {
     copyPending = true;
     try {
-      await navigator.clipboard.writeText(orderText(state.products));
+      await navigator.clipboard.writeText(orderText(state.products, state.supplierOrder));
       notify('発注内容をコピーしました．');
     } catch {
       document.querySelector('#dialog-title').textContent = '発注内容をコピー';
       document.querySelector('#dialog-message').textContent = '下の文章を選択してコピーしてください．';
       document.querySelector('#dialog-confirm').textContent = '閉じる';
       const textarea = document.querySelector('#copy-fallback');
-      textarea.value = orderText(state.products);
+      textarea.value = orderText(state.products, state.supplierOrder);
       textarea.hidden = false;
       dialog.showModal();
       textarea.focus(); textarea.select();
@@ -268,7 +300,38 @@ main.addEventListener('click', async event => {
   }
 });
 
+document.querySelector('#csv-file').addEventListener('change', async event => {
+  const file = event.target.files[0];
+  event.target.value = '';
+  if (!file || importPending) return;
+  importPending = true;
+  try {
+    if (file.size > 2 * 1024 * 1024) throw new Error('CSVは2MB以内にしてください．');
+    const bytes = await file.arrayBuffer();
+    let text;
+    try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+    catch { text = new TextDecoder('shift_jis', { fatal: true }).decode(bytes); }
+    const batch = prepareCsvImport(text, state.products);
+    if (!batch.additions.length) { notify('CSVの商品はすべて登録済みです．'); return; }
+    if (await confirmAction('CSVを読み込みますか', `${batch.additions.length}商品を追加します．${batch.skipped ? `重複${batch.skipped}件は追加しません．` : ''}既存の商品と数量はそのまま残ります．`, '読み込む')) {
+      // Recheck duplicates after the dialog in case another tab changed the list.
+      const current = prepareCsvImport(text, state.products);
+      state.products.push(...current.additions.map(p => ({ ...p, id: crypto.randomUUID() })));
+      const saved = save();
+      activeSupplier = null;
+      if (pageName() === 'list') render(); else location.hash = 'list';
+      if (saved) notify(`${current.additions.length}商品を読み込みました．`);
+    }
+  } catch (cause) { notify(cause.message || 'CSVを読み込めませんでした．', true); }
+  finally { importPending = false; }
+});
+
 main.addEventListener('input', event => {
+  if (event.target.id === 'product-search') {
+    productQuery = event.target.value;
+    main.querySelector('#product-results').innerHTML = catalogueView();
+    return;
+  }
   if (event.target.id === 'supplier-name') { showSupplierOptions(true); return; }
   const id = event.target.dataset.note;
   if (!id) return;
