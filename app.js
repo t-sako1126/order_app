@@ -1,6 +1,232 @@
-document.querySelector('#main').innerHTML = `
-  <div class="page-heading"><div><p class="eyebrow">ORDER LIST</p><h1>今日の発注を，整える．</h1><p class="lead">業者ごとに，必要な商品の数量を選んでください．</p></div></div>
-  <div class="workspace"><section><div class="filters"><button class="filter" aria-pressed="true">すべての業者</button><button class="filter">肉屋</button><button class="filter">八百屋</button></div>
-  <article class="supplier-card"><div class="supplier-heading"><h2>肉屋</h2><span>2 商品</span></div>
-  ${['鶏もも肉','豚バラ肉'].map(name => `<div class="product-row"><div class="product-info"><p class="product-name">${name}</p><p class="lead">1kgパック</p></div><div class="stepper"><button disabled>−</button><output>0</output><button class="plus">＋</button></div></div>`).join('')}</article></section>
-  <aside class="summary"><p class="eyebrow">今回の発注</p><div class="summary-total"><strong>0</strong><span>商品を選択中</span></div><button class="primary" disabled>発注内容を確認</button><p class="save-caption">選択した内容はこのブラウザに保存されます．</p></aside></div>`;
+import { STORAGE_KEY, MAX_QUANTITY, sampleState, validateState, changeQuantity, groups, totals, orderText } from './model.js';
+
+const main = document.querySelector('#main');
+const dialog = document.querySelector('#dialog');
+let initialMessage = '';
+let state = load();
+let activeSupplier = null;
+let noticeTimer;
+let copyPending = false;
+
+function load() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved === null) return sampleState();
+    const parsed = JSON.parse(saved);
+    if (!validateState(parsed)) throw new Error('Invalid state');
+    return parsed;
+  } catch {
+    initialMessage = '保存データを読み込めませんでした．サンプルを表示しています．';
+    return sampleState();
+  }
+}
+
+function save() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    return true;
+  } catch {
+    notify('ブラウザに保存できません．この画面を閉じると変更が失われます．', true);
+    return false;
+  }
+}
+
+const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+
+function notify(message, persistent = false) {
+  const notice = document.querySelector('#notice');
+  clearTimeout(noticeTimer);
+  notice.textContent = message;
+  notice.hidden = false;
+  if (!persistent) noticeTimer = setTimeout(() => { notice.hidden = true; }, 4500);
+}
+
+function heading(eyebrow, title, lead, extra = '') {
+  return `<div class="page-heading"><div><p class="eyebrow">${eyebrow}</p><h1>${title}</h1><p class="lead">${lead}</p></div>${extra}</div>`;
+}
+
+function summary(review = false) {
+  const total = totals(state.products);
+  return `<aside class="summary ${review ? 'review-summary' : 'list-summary'}" aria-label="今回の発注の集計"><p class="eyebrow">今回の発注</p>
+    <div class="summary-total"><strong id="total-count">${total.count}</strong><span>商品${review ? '' : 'を選択中'}</span></div>
+    <div class="summary-line"><span>発注先</span><strong id="total-suppliers">${total.suppliers} 業者</strong></div>
+    <div class="summary-line"><span>合計数量</span><strong id="total-quantity">${total.quantity}</strong></div>
+    ${review ? '<button class="primary" data-action="copy">発注内容をコピー</button><a href="#list" class="summary-back">数量を変更する</a>' : `<button class="primary" data-action="review" ${total.count ? '' : 'disabled'}>発注内容を確認</button>`}
+    <p class="save-caption">${review ? '確認・コピー用の一覧です．<br>業者への送信は行いません．' : '選択した内容はこのブラウザに保存されます．'}</p>
+  </aside>`;
+}
+
+function listView() {
+  const supplierGroups = groups(state.products);
+  const visible = supplierGroups.filter(g => activeSupplier === null || g.supplier === activeSupplier);
+  return heading('発注リスト', '今日の発注を，整える．', '業者ごとに，必要な商品の数量を選んでください．', '<a href="#add" class="text-link">商品を追加する</a>')
+    + (state.products.some(p => p.sample) ? '<div class="demo-banner"><p>使い方を試せるサンプル商品を表示しています．</p><button class="text-link" data-action="clear-samples">サンプルを消す</button></div>' : '')
+    + `<div class="workspace"><section aria-label="業者別の商品一覧">
+    ${state.products.length ? `<div class="filters" aria-label="業者の絞り込み"><button class="filter" data-filter-all aria-pressed="${activeSupplier === null}">すべて<span class="filter-count">${state.products.length}</span></button>
+    ${supplierGroups.map(g => `<button class="filter" data-filter="${escape(g.supplier)}" aria-pressed="${activeSupplier === g.supplier}">${escape(g.supplier)}<span class="filter-count">${g.items.length}</span></button>`).join('')}</div>` : ''}
+    ${visible.map(({ supplier, items }) => `<article class="supplier-card"><div class="supplier-heading"><h2>${escape(supplier)}</h2><span>${items.length} 商品</span></div>
+      ${items.map(p => `<div class="product-row" data-row="${escape(p.id)}"><div class="product-info"><h3 class="product-name">${escape(p.name)}</h3>
+        <textarea class="product-note" data-note="${escape(p.id)}" aria-label="${escape(p.name)}の備考" rows="1" maxlength="500" placeholder="備考を追加（任意）">${escape(p.note)}</textarea></div>
+        <div class="stepper" role="group" aria-label="${escape(p.name)}の数量"><button data-delta="-1" data-id="${escape(p.id)}" aria-label="${escape(p.name)}を1減らす" ${p.quantity === 0 ? 'disabled' : ''}>−</button>
+        <output aria-label="${escape(p.name)}の数量">${p.quantity}</output><button class="plus" data-delta="1" data-id="${escape(p.id)}" aria-label="${escape(p.name)}を1増やす" ${p.quantity === MAX_QUANTITY ? 'disabled' : ''}>＋</button></div></div>`).join('')}</article>`).join('')}
+    ${state.products.length ? '' : '<div class="empty"><h2>商品を登録しましょう</h2><p>商品名と業者名を登録すると，<br>ここから発注数量を選べます．</p><a href="#add" class="primary">最初の商品を追加</a></div>'}
+    </section>${summary()}</div>`;
+}
+
+function reviewView() {
+  const selected = groups(state.products, true);
+  return heading('発注前の確認', '発注内容の確認', '数量と備考を，発注前にもう一度確認してください．')
+    + (selected.length ? `<div class="workspace"><section aria-label="発注する商品"><div class="review-note">数量を選択した商品だけを，業者ごとにまとめています．</div>
+      ${selected.map(({ supplier, items }) => `<article class="supplier-card"><div class="supplier-heading"><h2>${escape(supplier)}</h2><span>${items.length} 商品</span></div>
+      ${items.map(p => `<div class="review-row"><div class="product-info"><h3 class="product-name">${escape(p.name)}</h3>${p.note ? `<p class="note">${escape(p.note)}</p>` : ''}</div><div class="review-quantity"><span class="quantity-sign">×</span> ${p.quantity}</div></div>`).join('')}</article>`).join('')}
+      <button class="text-link" data-action="reset">選択した数量をすべて0に戻す</button>
+      </section>${summary(true)}</div>` : '<div class="empty"><h2>まだ商品が選ばれていません</h2><p>発注リストの「＋」で数量を選ぶと，<br>ここに確認用の一覧が表示されます．</p><a href="#list" class="primary">発注リストへ</a></div>');
+}
+
+function addView() {
+  return heading('商品登録', '商品を追加', 'いつも発注する商品を，リストに登録しましょう．')
+    + `<div class="form-layout"><form id="product-form" class="product-form">
+      <div class="field"><label for="product-name">商品名<span>必須</span></label><input id="product-name" name="name" placeholder="例：鶏もも肉" required maxlength="80" autocomplete="off"></div>
+      <div class="field"><label for="supplier-name">業者名<span>必須</span></label><input id="supplier-name" name="supplier" placeholder="例：肉屋" required maxlength="80" list="suppliers" autocomplete="off"><datalist id="suppliers">${groups(state.products).map(g => `<option value="${escape(g.supplier)}"></option>`).join('')}</datalist><p>登録済みの業者名も選べます．</p></div>
+      <div class="field"><label for="product-note">備考<span>任意</span></label><textarea id="product-note" name="note" maxlength="500" placeholder="規格や発注時の注意点など\n例：1kgパック，薄切り"></textarea><p>発注リストからも編集できます．</p></div>
+      <p id="form-error" class="error" role="alert" hidden></p><button class="primary" type="submit">商品を登録する</button>
+    </form><aside class="form-aside"><h2>次の発注を，少し楽に．</h2><p>登録した商品は業者ごとにまとまります．<br>数量は0からスタート．必要なときに，必要な分だけ選べます．</p><p>商品と備考はこのブラウザに保存されます．</p></aside></div>`;
+}
+
+function pageName() {
+  return ['list', 'review', 'add'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'list';
+}
+
+function render(focus = false) {
+  const page = pageName();
+  main.dataset.page = page;
+  main.innerHTML = page === 'review' ? reviewView() : page === 'add' ? addView() : listView();
+  document.querySelectorAll('nav a').forEach(a => {
+    if (a.dataset.page === page) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+  });
+  updateTotals();
+  if (focus) { main.focus({ preventScroll: true }); window.scrollTo(0, 0); }
+}
+
+function updateTotals() {
+  const total = totals(state.products);
+  const badge = document.querySelector('#nav-count');
+  badge.textContent = total.count;
+  badge.hidden = total.count === 0;
+  const count = document.querySelector('#total-count');
+  if (count) count.textContent = total.count;
+  const suppliers = document.querySelector('#total-suppliers');
+  if (suppliers) suppliers.textContent = `${total.suppliers} 業者`;
+  const quantity = document.querySelector('#total-quantity');
+  if (quantity) quantity.textContent = total.quantity;
+  const review = document.querySelector('[data-action="review"]');
+  if (review) review.disabled = total.count === 0;
+}
+
+async function confirmAction(title, message, confirmLabel) {
+  document.querySelector('#dialog-title').textContent = title;
+  document.querySelector('#dialog-message').textContent = message;
+  document.querySelector('#dialog-confirm').textContent = confirmLabel;
+  document.querySelector('#copy-fallback').hidden = true;
+  dialog.returnValue = '';
+  dialog.showModal();
+  return new Promise(resolve => dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirm'), { once: true }));
+}
+
+main.addEventListener('click', async event => {
+  const button = event.target.closest('button');
+  if (!button) return;
+  if (button.dataset.delta) {
+    const product = state.products.find(p => p.id === button.dataset.id);
+    if (!product) return;
+    product.quantity = changeQuantity(product.quantity, Number(button.dataset.delta));
+    save();
+    const row = button.closest('.product-row');
+    row.querySelector('output').textContent = product.quantity;
+    row.querySelector('[data-delta="-1"]').disabled = product.quantity === 0;
+    row.querySelector('[data-delta="1"]').disabled = product.quantity === MAX_QUANTITY;
+    updateTotals();
+  } else if ('filter' in button.dataset || 'filterAll' in button.dataset) {
+    activeSupplier = button.dataset.filter ?? null;
+    const scroll = main.querySelector('.filters').scrollLeft;
+    render();
+    main.querySelector('.filters').scrollLeft = scroll;
+    const filter = [...main.querySelectorAll('.filter')].find(b => b.getAttribute('aria-pressed') === 'true');
+    filter?.focus({ preventScroll: true });
+  } else if (button.dataset.action === 'review') {
+    location.hash = 'review';
+  } else if (button.dataset.action === 'reset') {
+    if (await confirmAction('数量を0に戻しますか', '商品と備考はそのまま残り，選択した数量だけが0になります．', '0に戻す')) {
+      state.products.forEach(p => { p.quantity = 0; });
+      const saved = save(); render(true);
+      if (saved) notify('数量を0に戻しました．');
+    }
+  } else if (button.dataset.action === 'clear-samples') {
+    if (await confirmAction('サンプルを取り除きますか', 'サンプル商品の数量と備考も削除されます．自分で登録した商品は残ります．', 'サンプルを消す')) {
+      state.products = state.products.filter(p => !p.sample);
+      activeSupplier = null;
+      const saved = save(); render(true);
+      if (saved) notify('サンプルを取り除きました．商品を追加できます．');
+    }
+  } else if (button.dataset.action === 'copy' && !copyPending) {
+    copyPending = true;
+    try {
+      await navigator.clipboard.writeText(orderText(state.products));
+      notify('発注内容をコピーしました．');
+    } catch {
+      document.querySelector('#dialog-title').textContent = '発注内容をコピー';
+      document.querySelector('#dialog-message').textContent = '下の文章を選択してコピーしてください．';
+      document.querySelector('#dialog-confirm').textContent = '閉じる';
+      const textarea = document.querySelector('#copy-fallback');
+      textarea.value = orderText(state.products);
+      textarea.hidden = false;
+      dialog.showModal();
+      textarea.focus(); textarea.select();
+    } finally { copyPending = false; }
+  }
+});
+
+main.addEventListener('input', event => {
+  const id = event.target.dataset.note;
+  if (!id) return;
+  const product = state.products.find(p => p.id === id);
+  if (product) { product.note = event.target.value; save(); }
+});
+
+main.addEventListener('submit', event => {
+  if (event.target.id !== 'product-form') return;
+  event.preventDefault();
+  const data = new FormData(event.target);
+  const name = data.get('name').trim();
+  const supplier = data.get('supplier').trim();
+  const note = data.get('note').trim();
+  const error = document.querySelector('#form-error');
+  if (!name || !supplier || name.length > 80 || supplier.length > 80 || note.length > 500) {
+    error.textContent = '商品名と業者名は1〜80文字，備考は500文字以内で入力してください．';
+    error.hidden = false; return;
+  }
+  if (state.products.some(p => p.name === name && p.supplier === supplier)) {
+    error.textContent = '同じ業者に同じ商品名が登録されています．発注リストを確認してください．';
+    error.hidden = false; return;
+  }
+  state.products.push({ id: crypto.randomUUID(), name, supplier, note, quantity: 0 });
+  const saved = save();
+  activeSupplier = supplier;
+  location.hash = 'list';
+  if (saved) notify(`「${name}」を登録しました．`);
+});
+
+window.addEventListener('hashchange', () => render(true));
+window.addEventListener('storage', event => {
+  if (event.key !== STORAGE_KEY) return;
+  try {
+    const updated = JSON.parse(event.newValue);
+    if (!validateState(updated)) throw new Error('Invalid state');
+    if (pageName() === 'add') { state = updated; notify('別のタブで商品リストが更新されました．'); return; }
+    state = updated;
+    if (!state.products.some(p => p.supplier === activeSupplier)) activeSupplier = null;
+    render(); notify('別のタブで変更した内容を反映しました．');
+  } catch { notify('別のタブの保存データを読み込めませんでした．', true); }
+});
+render();
+if (initialMessage) notify(initialMessage, true);
