@@ -1,6 +1,25 @@
 export const STORAGE_KEY = 'order-note:v1';
 export const MAX_QUANTITY = 999;
 
+export function prepareBulkProducts(text, supplier, products) {
+  supplier = supplier.trim();
+  if (!supplier || supplier.length > 80) throw new Error('業者名は1〜80文字で入力してください．');
+  const lines = text.split(/\r\n|\n|\r/).map(name => name.trim()).filter(Boolean);
+  if (!lines.length) throw new Error('商品名を1行に1つずつ入力してください．');
+  if (lines.length > 100) throw new Error('一度に追加できるのは100行までです．');
+  if (lines.some(name => name.length > 80)) throw new Error('商品名は1行につき80文字以内で入力してください．');
+  const known = new Set(products.filter(p => p.supplier === supplier).map(p => p.name));
+  const names = [];
+  let skipped = 0;
+  for (const name of lines) {
+    if (known.has(name)) { skipped++; continue; }
+    known.add(name);
+    names.push(name);
+  }
+  if (!names.length) throw new Error('入力した商品はすべてこの業者に登録済みです．');
+  return { supplier, names, skipped };
+}
+
 export function sampleState() {
   return { version: 1, products: [
     { id: 'sample-1', name: '鶏もも肉', supplier: '肉屋', note: '1kgパック', quantity: 0, sample: true },

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sampleState, validateState, changeQuantity, groups, totals, orderText } from './model.js';
+import { sampleState, validateState, changeQuantity, groups, totals, orderText, prepareBulkProducts } from './model.js';
 
 test('quantity stays between zero and 999', () => {
   assert.equal(changeQuantity(0, -1), 0);
@@ -45,4 +45,21 @@ test('unusual supplier names remain valid grouping keys', () => {
   state.products[0].quantity = 1;
   assert.equal(groups(state.products, true)[0].supplier, '__proto__');
   assert.deepEqual(totals([]), { count: 0, quantity: 0, suppliers: 0 });
+});
+
+test('bulk registration trims lines and ignores blanks and same-supplier duplicates', () => {
+  const products = sampleState().products;
+  const batch = prepareBulkProducts('  牛ひき肉 \r\n\n鶏もも肉\r牛ひき肉\n牛乳\n', ' 肉屋 ', products);
+  assert.deepEqual(batch, { supplier: '肉屋', names: ['牛ひき肉', '牛乳'], skipped: 2 });
+  assert.equal(products.length, 6);
+});
+
+test('bulk registration rejects empty input, invalid lengths, and all-existing products', () => {
+  const products = sampleState().products;
+  assert.throws(() => prepareBulkProducts(' \n ', '肉屋', products), /1行に1つ/);
+  assert.throws(() => prepareBulkProducts('牛ひき肉', ' ', products), /業者名/);
+  assert.throws(() => prepareBulkProducts('牛ひき肉\n' + '長'.repeat(81), '肉屋', products), /80文字/);
+  assert.throws(() => prepareBulkProducts('鶏もも肉', '肉屋', products), /登録済み/);
+  assert.throws(() => prepareBulkProducts(Array(101).fill('牛ひき肉').join('\n'), '肉屋', products), /100行/);
+  assert.equal(products.length, 6);
 });

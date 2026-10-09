@@ -75,11 +75,15 @@ h2 { font-size: 18px; margin: 0; font-weight: 650; overflow-wrap: anywhere; }
 .review-actions > * { flex: 1; }
 .form-layout { max-width: 640px; }
 .product-form { padding: 32px; border-radius: 24px; background: var(--card); }
+.add-modes { display: flex; gap: 6px; padding: 5px; margin-bottom: 28px; background: var(--soft); border-radius: 18px; }
+.add-modes button { flex: 1; min-height: 44px; padding: 12px 8px; border-radius: 14px; font-size: 13px; background: transparent; }
+.add-modes button[aria-pressed="true"] { background: var(--card); font-weight: 600; }
 .field { margin-bottom: 28px; }
 .field label { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; margin-bottom: 12px; }
 .field label span { color: var(--muted); font-size: 11px; font-weight: 400; }
 .field input, .field textarea { width: 100%; border: 1px solid var(--line); border-radius: 16px; padding: 16px; min-height: 52px; background: var(--card); color: var(--ink); font-size: 16px; }
 .field textarea { min-height: 118px; resize: vertical; line-height: 1.8; }
+.field .bulk-product-names { min-height: 210px; }
 .field input::placeholder, .field textarea::placeholder { color: var(--muted); }
 .supplier-picker { position: relative; }
 .supplier-options { position: absolute; top: calc(100% + 8px); left: 0; right: 0; max-height: 240px; overflow-y: auto; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 6px; z-index: 4; box-shadow: 0 8px 20px #432d2010; }

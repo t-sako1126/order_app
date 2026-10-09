@@ -1,4 +1,4 @@
-import { STORAGE_KEY, MAX_QUANTITY, sampleState, validateState, changeQuantity, groups, totals, orderText } from './model.js';
+import { STORAGE_KEY, MAX_QUANTITY, sampleState, validateState, changeQuantity, groups, totals, orderText, prepareBulkProducts } from './model.js?v=4';
 
 const main = document.querySelector('#main');
 const dialog = document.querySelector('#dialog');
@@ -8,6 +8,7 @@ let activeSupplier = null;
 let noticeTimer;
 let copyPending = false;
 let activeSupplierOption = -1;
+let productAddMode = 'single';
 
 function load() {
   try {
@@ -81,12 +82,15 @@ function reviewView() {
 }
 
 function addView() {
+  const bulk = productAddMode === 'bulk';
   return heading('商品を追加')
     + `<div class="form-layout"><form id="product-form" class="product-form">
-      <div class="field"><label for="product-name">商品名<span>必須</span></label><input id="product-name" name="name" placeholder="例：鶏もも肉" required maxlength="80" autocomplete="off"></div>
+      <div class="add-modes" role="group" aria-label="商品追加方法"><button type="button" data-add-mode="single" aria-pressed="${!bulk}">1件ずつ追加</button><button type="button" data-add-mode="bulk" aria-pressed="${bulk}">まとめて追加</button></div>
       <div class="field"><label for="supplier-name">業者名<span>必須</span></label><div class="supplier-picker"><input id="supplier-name" name="supplier" placeholder="例：肉屋" required maxlength="80" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="supplier-options"><div id="supplier-options" class="supplier-options" role="listbox" aria-label="登録済みの業者" hidden></div></div></div>
-      <div class="field"><label for="product-note">備考<span>任意</span></label><textarea id="product-note" name="note" maxlength="500" placeholder="例：1kgパック，薄切り"></textarea></div>
-      <p id="form-error" class="error" role="alert" hidden></p><button class="primary" type="submit">商品を登録する</button>
+      <div id="single-product-fields" ${bulk ? 'hidden' : ''}><div class="field"><label for="product-name">商品名<span>必須</span></label><input id="product-name" name="name" placeholder="例：鶏もも肉" required maxlength="80" autocomplete="off" ${bulk ? 'disabled' : ''}></div>
+      <div class="field"><label for="product-note">備考<span>任意</span></label><textarea id="product-note" name="note" maxlength="500" placeholder="例：1kgパック，薄切り" ${bulk ? 'disabled' : ''}></textarea></div></div>
+      <div id="bulk-product-fields" ${bulk ? '' : 'hidden'}><div class="field"><label for="product-names">商品名（1行に1商品）<span>必須</span></label><textarea id="product-names" class="bulk-product-names" name="names" rows="7" placeholder="鶏もも肉\n豚バラ肉\n牛ひき肉" required maxlength="10000" ${bulk ? '' : 'disabled'}></textarea></div></div>
+      <p id="form-error" class="error" role="alert" hidden></p><button class="primary" type="submit" id="register-products">${bulk ? 'まとめて登録する' : '商品を登録する'}</button>
     </form>${state.products.some(p => p.sample) ? '<button class="text-link" type="button" data-action="clear-samples">サンプル商品を削除</button>' : ''}</div>`;
 }
 
@@ -200,7 +204,19 @@ main.addEventListener('click', async event => {
   if (event.target.id === 'supplier-name') { showSupplierOptions(); return; }
   const button = event.target.closest('button');
   if (!button) return;
-  if ('supplierOption' in button.dataset) {
+  if (button.dataset.addMode) {
+    productAddMode = button.dataset.addMode;
+    const bulk = productAddMode === 'bulk';
+    document.querySelector('#single-product-fields').hidden = bulk;
+    document.querySelector('#bulk-product-fields').hidden = !bulk;
+    document.querySelector('#product-name').disabled = bulk;
+    document.querySelector('#product-note').disabled = bulk;
+    document.querySelector('#product-names').disabled = !bulk;
+    main.querySelectorAll('[data-add-mode]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.addMode === productAddMode)));
+    document.querySelector('#register-products').textContent = bulk ? 'まとめて登録する' : '商品を登録する';
+    document.querySelector('#form-error').hidden = true;
+    closeSupplierOptions();
+  } else if ('supplierOption' in button.dataset) {
     selectSupplier(button.dataset.supplierOption);
   } else if (button.dataset.delta) {
     const product = state.products.find(p => p.id === button.dataset.id);
@@ -264,10 +280,25 @@ main.addEventListener('submit', event => {
   if (event.target.id !== 'product-form') return;
   event.preventDefault();
   const data = new FormData(event.target);
-  const name = data.get('name').trim();
   const supplier = data.get('supplier').trim();
-  const note = data.get('note').trim();
   const error = document.querySelector('#form-error');
+  if (productAddMode === 'bulk') {
+    try {
+      const batch = prepareBulkProducts(data.get('names'), supplier, state.products);
+      const additions = batch.names.map(name => ({ id: crypto.randomUUID(), name, supplier: batch.supplier, note: '', quantity: 0 }));
+      state.products.push(...additions);
+      const saved = save();
+      activeSupplier = batch.supplier;
+      location.hash = 'list';
+      if (saved) notify(`${additions.length}商品を登録しました．${batch.skipped ? `重複${batch.skipped}件は追加していません．` : ''}`);
+    } catch (cause) {
+      error.textContent = cause.message;
+      error.hidden = false;
+    }
+    return;
+  }
+  const name = data.get('name').trim();
+  const note = data.get('note').trim();
   if (!name || !supplier || name.length > 80 || supplier.length > 80 || note.length > 500) {
     error.textContent = '商品名と業者名は1〜80文字，備考は500文字以内で入力してください．';
     error.hidden = false; return;
