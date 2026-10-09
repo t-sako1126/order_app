@@ -30,6 +30,7 @@ nav a { padding: 15px 21px; border-radius: 18px; font-size: 14px; display: flex;
 nav a[aria-current="page"] { background: var(--soft); font-weight: 700; }
 .nav-count { background: var(--accent); color: var(--card); border-radius: 50%; min-width: 20px; height: 20px; display: grid; place-items: center; font-size: 10px; padding: 0 4px; }
 main { max-width: 1120px; padding: 48px 36px 56px; margin: auto; }
+main[data-page="list"] { padding-top: 32px; }
 .page-heading { margin-bottom: 32px; display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
 .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .14em; color: var(--accent); margin: 0 0 12px; }
 h1 { font-size: 32px; line-height: 1.4; letter-spacing: .025em; margin: 0 0 10px; font-weight: 650; }
@@ -71,9 +72,6 @@ h2 { font-size: 18px; margin: 0; font-weight: 650; overflow-wrap: anywhere; }
 .primary:hover:not(:disabled) { background: #846246; }
 .stepper button:hover:not(:disabled) { filter: brightness(.96); }
 .save-caption { font-size: 11px; color: var(--accent); line-height: 1.8; margin: 16px 0 0; text-align: center; }
-.demo-banner { display: flex; justify-content: space-between; align-items: center; gap: 16px; background: var(--soft); border-radius: 18px; padding: 12px 20px; margin-bottom: 24px; font-size: 12px; color: var(--accent); }
-.demo-banner p { margin: 0; line-height: 1.8; }
-.demo-banner button { white-space: nowrap; font-size: 12px; }
 .empty { background: var(--card); border-radius: 24px; padding: 52px 24px; text-align: center; }
 .empty h2 { margin-bottom: 12px; }
 .empty p { color: var(--muted); font-size: 14px; line-height: 1.9; margin-bottom: 24px; }
@@ -113,7 +111,6 @@ dialog p { font-size: 14px; line-height: 1.9; color: var(--accent); }
   main { padding: 32px 20px calc(108px + env(safe-area-inset-bottom)); }
   h1 { font-size: 28px; }
   .page-heading { margin-bottom: 26px; }
-  .page-heading > .text-link { display: none; }
   .lead { font-size: 12px; }
   .workspace, .form-layout { display: block; }
   .supplier-card { padding: 0 20px; border-radius: 24px; }
@@ -129,14 +126,13 @@ dialog p { font-size: 14px; line-height: 1.9; color: var(--accent); }
   .summary { position: static; padding: 24px; margin-top: 28px; }
   .summary-total strong { font-size: 36px; }
   .summary .primary { width: 100%; }
-  main[data-page="list"] { padding-bottom: calc(190px + env(safe-area-inset-bottom)); }
+  main[data-page="list"] { padding-top: 24px; padding-bottom: calc(190px + env(safe-area-inset-bottom)); }
   .list-summary { position: fixed; top: auto; left: 16px; right: 16px; bottom: calc(80px + env(safe-area-inset-bottom)); padding: 14px 16px; margin: 0; border: 1px solid var(--line); display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; z-index: 2; background: var(--card); border-radius: 20px; }
   .list-summary .eyebrow, .list-summary .summary-line, .list-summary .save-caption { display: none; }
   .list-summary .summary-total { margin: 0; display: block; }
   .list-summary .summary-total strong { font-size: 25px; }
   .list-summary .summary-total span { display: block; font-size: 10px; margin-top: 6px; }
   .list-summary .primary { margin: 0; min-height: 48px; padding: 14px 20px; font-size: 12px; }
-  .demo-banner { padding: 12px 16px; gap: 12px; font-size: 11px; }
   .product-form { padding: 24px 20px; }
   .form-aside { padding: 24px 8px 0; }
   .review-quantity { font-size: 22px; }

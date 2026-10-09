@@ -41,8 +41,8 @@ function notify(message, persistent = false) {
   if (!persistent) noticeTimer = setTimeout(() => { notice.hidden = true; }, 4500);
 }
 
-function heading(eyebrow, title, lead, extra = '') {
-  return `<div class="page-heading"><div><p class="eyebrow">${eyebrow}</p><h1>${title}</h1><p class="lead">${lead}</p></div>${extra}</div>`;
+function heading(eyebrow, title, lead) {
+  return `<div class="page-heading"><div><p class="eyebrow">${eyebrow}</p><h1>${title}</h1><p class="lead">${lead}</p></div></div>`;
 }
 
 function summary(review = false) {
@@ -59,9 +59,7 @@ function summary(review = false) {
 function listView() {
   const supplierGroups = groups(state.products);
   const visible = supplierGroups.filter(g => activeSupplier === null || g.supplier === activeSupplier);
-  return heading('発注リスト', '今日の発注を，整える．', '業者ごとに，必要な商品の数量を選んでください．', '<a href="#add" class="text-link">商品を追加する</a>')
-    + (state.products.some(p => p.sample) ? '<div class="demo-banner"><p>使い方を試せるサンプル商品を表示しています．</p><button class="text-link" data-action="clear-samples">サンプルを消す</button></div>' : '')
-    + `<div class="workspace"><section aria-label="業者別の商品一覧">
+  return `<div class="workspace"><section aria-label="業者別の商品一覧">
     ${state.products.length ? `<div class="filters" aria-label="業者の絞り込み"><button class="filter" data-filter-all aria-pressed="${activeSupplier === null}">すべて<span class="filter-count">${state.products.length}</span></button>
     ${supplierGroups.map(g => `<button class="filter" data-filter="${escape(g.supplier)}" aria-pressed="${activeSupplier === g.supplier}">${escape(g.supplier)}<span class="filter-count">${g.items.length}</span></button>`).join('')}</div>` : ''}
     ${visible.map(({ supplier, items }) => `<article class="supplier-card"><div class="supplier-heading"><h2>${escape(supplier)}</h2><span>${items.length} 商品</span></div>
@@ -90,7 +88,7 @@ function addView() {
       <div class="field"><label for="supplier-name">業者名<span>必須</span></label><input id="supplier-name" name="supplier" placeholder="例：肉屋" required maxlength="80" list="suppliers" autocomplete="off"><datalist id="suppliers">${groups(state.products).map(g => `<option value="${escape(g.supplier)}"></option>`).join('')}</datalist><p>登録済みの業者名も選べます．</p></div>
       <div class="field"><label for="product-note">備考<span>任意</span></label><textarea id="product-note" name="note" maxlength="500" placeholder="規格や発注時の注意点など\n例：1kgパック，薄切り"></textarea><p>発注リストからも編集できます．</p></div>
       <p id="form-error" class="error" role="alert" hidden></p><button class="primary" type="submit">商品を登録する</button>
-    </form><aside class="form-aside"><h2>次の発注を，少し楽に．</h2><p>登録した商品は業者ごとにまとまります．<br>数量は0からスタート．必要なときに，必要な分だけ選べます．</p><p>商品と備考はこのブラウザに保存されます．</p></aside></div>`;
+    </form><aside class="form-aside"><h2>次の発注を，少し楽に．</h2><p>登録した商品は業者ごとにまとまります．<br>数量は0からスタート．必要なときに，必要な分だけ選べます．</p><p>商品と備考はこのブラウザに保存されます．</p>${state.products.some(p => p.sample) ? '<button class="text-link" type="button" data-action="clear-samples">サンプル商品を削除</button>' : ''}</aside></div>`;
 }
 
 function pageName() {
