@@ -84,6 +84,10 @@ h2 { font-size: 18px; margin: 0; font-weight: 650; overflow-wrap: anywhere; }
 .field input, .field textarea { width: 100%; border: 1px solid var(--line); border-radius: 16px; padding: 16px; min-height: 52px; background: var(--card); color: var(--ink); font-size: 16px; }
 .field textarea { min-height: 118px; resize: vertical; line-height: 1.8; }
 .field input::placeholder, .field textarea::placeholder { color: var(--muted); }
+.supplier-picker { position: relative; }
+.supplier-options { position: absolute; top: calc(100% + 8px); left: 0; right: 0; max-height: 240px; overflow-y: auto; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 6px; z-index: 4; box-shadow: 0 8px 20px #432d2010; }
+.supplier-option { display: block; width: 100%; min-height: 48px; padding: 12px 14px; text-align: left; border-radius: 12px; background: transparent; font-size: 16px; overflow-wrap: anywhere; }
+.supplier-option:hover, .supplier-option[aria-selected="true"] { background: var(--soft); }
 .product-form .primary { width: 100%; }
 .error { color: #8d4134; line-height: 1.8; font-size: 13px; }
 .notice { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 32px); width: max-content; background: var(--ink); color: var(--card); padding: 16px 24px; border-radius: 18px; font-size: 13px; z-index: 5; box-shadow: 0 4px 24px #432d2015; }

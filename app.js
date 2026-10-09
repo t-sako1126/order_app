@@ -7,6 +7,7 @@ let state = load();
 let activeSupplier = null;
 let noticeTimer;
 let copyPending = false;
+let activeSupplierOption = -1;
 
 function load() {
   try {
@@ -84,7 +85,7 @@ function addView() {
   return heading('商品を追加')
     + `<div class="form-layout"><form id="product-form" class="product-form">
       <div class="field"><label for="product-name">商品名<span>必須</span></label><input id="product-name" name="name" placeholder="例：鶏もも肉" required maxlength="80" autocomplete="off"></div>
-      <div class="field"><label for="supplier-name">業者名<span>必須</span></label><input id="supplier-name" name="supplier" placeholder="例：肉屋" required maxlength="80" list="suppliers" autocomplete="off"><datalist id="suppliers">${groups(state.products).map(g => `<option value="${escape(g.supplier)}"></option>`).join('')}</datalist></div>
+      <div class="field"><label for="supplier-name">業者名<span>必須</span></label><div class="supplier-picker"><input id="supplier-name" name="supplier" placeholder="例：肉屋" required maxlength="80" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="supplier-options"><div id="supplier-options" class="supplier-options" role="listbox" aria-label="登録済みの業者" hidden></div></div></div>
       <div class="field"><label for="product-note">備考<span>任意</span></label><textarea id="product-note" name="note" maxlength="500" placeholder="例：1kgパック，薄切り"></textarea></div>
       <p id="form-error" class="error" role="alert" hidden></p><button class="primary" type="submit">商品を登録する</button>
     </form>${state.products.some(p => p.sample) ? '<button class="text-link" type="button" data-action="clear-samples">サンプル商品を削除</button>' : ''}</div>`;
@@ -120,6 +121,74 @@ function updateTotals() {
   if (review) review.disabled = total.count === 0;
 }
 
+function closeSupplierOptions() {
+  const input = document.querySelector('#supplier-name');
+  const options = document.querySelector('#supplier-options');
+  if (!input || !options) return;
+  options.hidden = true;
+  input.setAttribute('aria-expanded', 'false');
+  input.removeAttribute('aria-activedescendant');
+  activeSupplierOption = -1;
+}
+
+function showSupplierOptions(filter = false) {
+  const input = document.querySelector('#supplier-name');
+  const options = document.querySelector('#supplier-options');
+  if (!input || !options) return;
+  const query = filter ? input.value.trim().toLocaleLowerCase('ja') : '';
+  const suppliers = groups(state.products).map(g => g.supplier)
+    .filter(name => name.toLocaleLowerCase('ja').includes(query));
+  options.innerHTML = suppliers.map((name, index) => `<button type="button" class="supplier-option" id="supplier-option-${index}" role="option" aria-selected="false" tabindex="-1" data-supplier-option="${escape(name)}">${escape(name)}</button>`).join('');
+  options.hidden = suppliers.length === 0;
+  input.setAttribute('aria-expanded', String(suppliers.length > 0));
+  input.removeAttribute('aria-activedescendant');
+  activeSupplierOption = -1;
+}
+
+function selectSupplier(name) {
+  const input = document.querySelector('#supplier-name');
+  input.value = name;
+  closeSupplierOptions();
+  input.focus({ preventScroll: true });
+}
+
+main.addEventListener('focusin', event => {
+  if (event.target.id === 'supplier-name') showSupplierOptions();
+});
+
+main.addEventListener('focusout', event => {
+  if (event.target.id === 'supplier-name') closeSupplierOptions();
+});
+
+document.addEventListener('pointerdown', event => {
+  if (event.target.closest('.supplier-option')) event.preventDefault();
+  else if (!event.target.closest('.supplier-picker')) closeSupplierOptions();
+});
+
+main.addEventListener('keydown', event => {
+  if (event.target.id !== 'supplier-name' || event.isComposing) return;
+  const input = event.target;
+  const list = document.querySelector('#supplier-options');
+  if (event.key === 'Escape') { closeSupplierOptions(); return; }
+  if (event.key === 'Enter' && !list.hidden && activeSupplierOption >= 0) {
+    event.preventDefault();
+    selectSupplier(list.children[activeSupplierOption].dataset.supplierOption);
+    return;
+  }
+  if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
+  event.preventDefault();
+  if (list.hidden) showSupplierOptions();
+  const options = [...list.children];
+  if (!options.length) return;
+  activeSupplierOption = activeSupplierOption < 0
+    ? (event.key === 'ArrowDown' ? 0 : options.length - 1)
+    : (activeSupplierOption + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
+  options.forEach((option, index) => option.setAttribute('aria-selected', String(index === activeSupplierOption)));
+  const active = options[activeSupplierOption];
+  input.setAttribute('aria-activedescendant', active.id);
+  active.scrollIntoView({ block: 'nearest' });
+});
+
 async function confirmAction(title, message, confirmLabel) {
   document.querySelector('#dialog-title').textContent = title;
   document.querySelector('#dialog-message').textContent = message;
@@ -131,9 +200,12 @@ async function confirmAction(title, message, confirmLabel) {
 }
 
 main.addEventListener('click', async event => {
+  if (event.target.id === 'supplier-name') { showSupplierOptions(); return; }
   const button = event.target.closest('button');
   if (!button) return;
-  if (button.dataset.delta) {
+  if ('supplierOption' in button.dataset) {
+    selectSupplier(button.dataset.supplierOption);
+  } else if (button.dataset.delta) {
     const product = state.products.find(p => p.id === button.dataset.id);
     if (!product) return;
     product.quantity = changeQuantity(product.quantity, Number(button.dataset.delta));
@@ -184,6 +256,7 @@ main.addEventListener('click', async event => {
 });
 
 main.addEventListener('input', event => {
+  if (event.target.id === 'supplier-name') { showSupplierOptions(true); return; }
   const id = event.target.dataset.note;
   if (!id) return;
   const product = state.products.find(p => p.id === id);
