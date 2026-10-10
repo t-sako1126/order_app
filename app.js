@@ -1,4 +1,4 @@
-import { STORAGE_KEY, MAX_QUANTITY, sampleState, validateState, changeQuantity, groups, totals, orderText, prepareBulkProducts, supplierOrder, moveSupplier, searchProducts, exportCsv, prepareCsvImport } from './model.js?v=6';
+import { STORAGE_KEY, MAX_QUANTITY, sampleState, validateState, changeQuantity, groups, totals, orderText, prepareBulkProducts, supplierOrder, moveSupplier, searchProducts, exportCsv, prepareCsvImport } from './model.js?v=7';
 
 const main = document.querySelector('#main');
 const dialog = document.querySelector('#dialog');
@@ -13,6 +13,8 @@ let productQuery = '';
 let tabGesture = null;
 let suppressTabClick = false;
 let importPending = false;
+let productSwipe = null;
+let suppressProductClick = false;
 
 function load() {
   try {
@@ -94,9 +96,19 @@ function reviewView() {
       </section>${summary(true)}</div>` : '<div class="empty"><h2>商品が選択されていません</h2><a href="#list" class="primary">発注リストへ</a></div>');
 }
 
+function managementView() {
+  const cards = groups(state.products, false, state.supplierOrder).map(({ supplier, items }) =>
+    `<article class="supplier-card management-card"><div class="supplier-heading"><h2>${escape(supplier)}</h2><span>${items.length} 商品</span></div>
+      ${items.map(p => `<div class="managed-row" data-managed-id="${escape(p.id)}">
+        <button class="delete-product" data-delete-product="${escape(p.id)}" aria-label="${escape(p.name)}を削除" title="商品を削除"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></svg></button>
+        <div class="managed-content"><div class="product-info"><h3 class="product-name">${escape(p.name)}</h3><textarea class="product-note" data-note="${escape(p.id)}" aria-label="${escape(p.name)}の備考" rows="1" maxlength="500" placeholder="備考を追加（任意）">${escape(p.note)}</textarea></div></div>
+      </div>`).join('')}</article>`).join('');
+  return heading('商品管理') + `<div class="management-layout"><section aria-label="管理する商品">${cards || '<div class="empty"><h2>商品がありません</h2></div>'}${state.products.some(p => p.sample) ? '<button class="text-link" data-action="clear-samples">サンプル商品を削除</button>' : ''}</section><aside class="management-actions"><a class="primary" href="#add">商品を追加</a></aside></div>`;
+}
+
 function addView() {
   const bulk = productAddMode === 'bulk';
-  return heading('商品を追加')
+  return '<a class="text-link" href="#manage">商品管理へ戻る</a>' + heading('商品を追加')
     + `<div class="form-layout"><form id="product-form" class="product-form">
       <div class="add-modes" role="group" aria-label="商品追加方法"><button type="button" data-add-mode="single" aria-pressed="${!bulk}">1件ずつ追加</button><button type="button" data-add-mode="bulk" aria-pressed="${bulk}">まとめて追加</button></div>
       <div class="field"><label for="supplier-name">業者名<span>必須</span></label><div class="supplier-picker"><input id="supplier-name" name="supplier" placeholder="例：肉屋" required maxlength="80" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="supplier-options"><div id="supplier-options" class="supplier-options" role="listbox" aria-label="登録済みの業者" hidden></div></div></div>
@@ -104,20 +116,21 @@ function addView() {
       <div class="field"><label for="product-note">備考<span>任意</span></label><textarea id="product-note" name="note" maxlength="500" placeholder="例：1kgパック，薄切り" ${bulk ? 'disabled' : ''}></textarea></div></div>
       <div id="bulk-product-fields" ${bulk ? '' : 'hidden'}><div class="field"><label for="product-names">商品名（1行に1商品）<span>必須</span></label><textarea id="product-names" class="bulk-product-names" name="names" rows="7" placeholder="鶏もも肉\n豚バラ肉\n牛ひき肉" required maxlength="10000" ${bulk ? '' : 'disabled'}></textarea></div></div>
       <p id="form-error" class="error" role="alert" hidden></p><button class="primary" type="submit" id="register-products">${bulk ? 'まとめて登録する' : '商品を登録する'}</button>
-    </form>${state.products.some(p => p.sample) ? '<button class="text-link" type="button" data-action="clear-samples">サンプル商品を削除</button>' : ''}</div>`;
+    </form></div>`;
 }
 
 function pageName() {
-  return ['list', 'review', 'add'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'list';
+  return ['list', 'review', 'manage', 'add'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'list';
 }
 
 function render(focus = false) {
   cancelTabGesture();
+  cancelProductSwipe();
   const page = pageName();
   main.dataset.page = page;
-  main.innerHTML = page === 'review' ? reviewView() : page === 'add' ? addView() : listView();
+  main.innerHTML = page === 'review' ? reviewView() : page === 'add' ? addView() : page === 'manage' ? managementView() : listView();
   document.querySelectorAll('nav a').forEach(a => {
-    if (a.dataset.page === page) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+    if (a.dataset.page === (page === 'add' ? 'manage' : page)) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   });
   updateTotals();
   if (focus) { main.focus({ preventScroll: true }); window.scrollTo(0, 0); }
@@ -166,6 +179,64 @@ function selectSupplier(name) {
   closeSupplierOptions();
   input.focus({ preventScroll: true });
 }
+
+function setProductReveal(row, open) {
+  row.classList.toggle('revealed', open);
+  row.querySelector('.managed-content').style.removeProperty('transform');
+}
+
+function cancelProductSwipe() {
+  if (!productSwipe) return;
+  const g = productSwipe;
+  productSwipe = null;
+  if (g.row.hasPointerCapture(g.id)) g.row.releasePointerCapture(g.id);
+  g.row.classList.remove('swiping');
+  setProductReveal(g.row, g.open);
+}
+
+main.addEventListener('pointerdown', event => {
+  const row = event.target.closest('.managed-row');
+  if (!row || event.target.closest('textarea, button') || !event.isPrimary || event.button !== 0) return;
+  cancelProductSwipe();
+  suppressProductClick = false;
+  main.querySelectorAll('.managed-row.revealed').forEach(other => { if (other !== row) setProductReveal(other, false); });
+  productSwipe = { row, id: event.pointerId, x: event.clientX, y: event.clientY,
+    open: row.classList.contains('revealed'), moved: false, offset: row.classList.contains('revealed') ? -76 : 0 };
+});
+main.addEventListener('pointermove', event => {
+  const g = productSwipe;
+  if (!g || g.id !== event.pointerId) return;
+  const dx = event.clientX - g.x, dy = event.clientY - g.y;
+  if (!g.moved) {
+    if (Math.hypot(dx, dy) < 8) return;
+    if (Math.abs(dy) >= Math.abs(dx)) { cancelProductSwipe(); return; }
+    g.moved = true;
+    g.row.setPointerCapture(g.id);
+    g.row.classList.add('swiping');
+  }
+  g.offset = Math.max(-76, Math.min(0, (g.open ? -76 : 0) + dx));
+  g.row.querySelector('.managed-content').style.transform = `translateX(${g.offset}px)`;
+  g.row.classList.toggle('revealed', g.offset < 0);
+  suppressProductClick = true;
+});
+main.addEventListener('pointerup', event => {
+  const g = productSwipe;
+  if (!g || g.id !== event.pointerId) return;
+  g.open = g.offset < -38;
+  cancelProductSwipe();
+  setTimeout(() => { suppressProductClick = false; }, 0);
+});
+main.addEventListener('pointercancel', cancelProductSwipe);
+main.addEventListener('focusin', event => {
+  const row = event.target.closest('.managed-row');
+  if (!row) return;
+  if (event.target.closest('.delete-product')) setProductReveal(row, true);
+  else if (event.target.matches('textarea')) setProductReveal(row, false);
+});
+main.addEventListener('keydown', event => {
+  const row = event.target.closest('.managed-row');
+  if (row && event.key === 'Escape') setProductReveal(row, false);
+});
 
 // Horizontal swipes scroll the tabs; holding a touch tab starts reordering.
 function cancelTabGesture() {
@@ -318,6 +389,18 @@ main.addEventListener('click', async event => {
   if (event.target.id === 'supplier-name') { showSupplierOptions(); return; }
   const button = event.target.closest('button');
   if (!button) return;
+  if (button.closest('.managed-row') && suppressProductClick) return;
+  if (button.dataset.deleteProduct) {
+    const product = state.products.find(p => p.id === button.dataset.deleteProduct);
+    if (!product) return;
+    if (await confirmAction('商品を削除しますか', `「${product.name}」を削除します．${product.quantity ? `選択中の数量${product.quantity}も削除されます．` : ''}`, '削除する')) {
+      state.products = state.products.filter(p => p.id !== product.id);
+      if (!state.products.some(p => p.supplier === activeSupplier)) activeSupplier = null;
+      const saved = save(); render();
+      if (saved) notify(`「${product.name}」を削除しました．`);
+    }
+    return;
+  }
   if (button.closest('.filters') && suppressTabClick) { suppressTabClick = false; return; }
   if (button.dataset.action === 'csv-export') {
     const url = URL.createObjectURL(new Blob([exportCsv(state.products, state.supplierOrder)], { type: 'text/csv;charset=utf-8' }));
@@ -443,7 +526,7 @@ main.addEventListener('submit', event => {
       state.products.push(...additions);
       const saved = save();
       activeSupplier = batch.supplier;
-      location.hash = 'list';
+      location.hash = 'manage';
       if (saved) notify(`${additions.length}商品を登録しました．${batch.skipped ? `重複${batch.skipped}件は追加していません．` : ''}`);
     } catch (cause) {
       error.textContent = cause.message;
@@ -464,7 +547,7 @@ main.addEventListener('submit', event => {
   state.products.push({ id: crypto.randomUUID(), name, supplier, note, quantity: 0 });
   const saved = save();
   activeSupplier = supplier;
-  location.hash = 'list';
+  location.hash = 'manage';
   if (saved) notify(`「${name}」を登録しました．`);
 });
 
