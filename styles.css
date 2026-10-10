@@ -189,3 +189,5 @@ body.reordering { cursor: grabbing; user-select: none; -webkit-user-select: none
   .managed-content { gap: 8px; }
   .selection-toolbar { gap: 8px 12px; }
 }
+
+.bulk-delete-toggle[aria-pressed="true"] { background: var(--accent); color: var(--card); }
