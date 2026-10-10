@@ -140,3 +140,27 @@ dialog p { font-size: 14px; line-height: 1.9; color: var(--accent); }
 @media (prefers-reduced-motion: no-preference) {
   button, nav a { transition: background-color .15s ease; }
 }
+
+.management-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 32px; align-items: start; }
+.management-actions { position: sticky; top: 24px; border-radius: 24px; background: var(--soft); padding: 24px; }
+.management-actions .primary { width: 100%; }
+.managed-row { position: relative; overflow: hidden; touch-action: pan-y; }
+.managed-row + .managed-row { border-top: 1px solid var(--line); }
+.managed-content { position: relative; padding: 24px 0; background: var(--card); transform: translateX(0); }
+.managed-content .product-name { user-select: none; -webkit-user-select: none; }
+.managed-row.revealed .managed-content { transform: translateX(-76px); }
+.delete-product { position: absolute; right: 0; top: 10px; bottom: 10px; width: 64px; min-height: 44px; border-radius: 16px; display: grid; place-items: center; background: #8d4134; color: var(--card); opacity: 0; pointer-events: none; }
+.delete-product svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.managed-row.revealed .delete-product { opacity: 1; pointer-events: auto; }
+@media (max-width: 760px) {
+  nav a { white-space: nowrap; }
+  main[data-page="manage"] { padding-bottom: calc(190px + env(safe-area-inset-bottom)); }
+  .management-layout { display: block; }
+  .management-actions { position: fixed; top: auto; left: 16px; right: 16px; bottom: calc(80px + env(safe-area-inset-bottom)); padding: 14px 16px; border: 1px solid var(--line); background: var(--card); z-index: 2; border-radius: 20px; }
+  .management-actions .primary { min-height: 48px; }
+  .managed-content { padding: 22px 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .managed-content { transition: transform .18s ease; }
+  .managed-row.swiping .managed-content { transition: none; }
+}
