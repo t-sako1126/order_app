@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sampleState, validateState, changeQuantity, groups, totals, orderText, prepareBulkProducts, supplierOrder, moveSupplier, searchProducts, exportCsv, parseCsv, prepareCsvImport } from './model.js';
+import { sampleState, validateState, changeQuantity, groups, totals, orderText, prepareBulkProducts, supplierOrder, moveSupplier, searchProducts, exportCsv, parseCsv, prepareCsvImport, reorderSupplierProducts } from './model.js';
 
 test('quantity stays between zero and 999', () => {
   assert.equal(changeQuantity(0, -1), 0);
@@ -117,4 +117,18 @@ test('search normalizes width and case and leaves selection quantities untouched
   assert.equal(searchProducts(products, '不存在').length, 0);
   assert.equal(searchProducts(products, '').length, products.length);
   assert.equal(totals(products).quantity, 3);
+});
+
+test('product reordering preserves other suppliers and all notes and quantities', () => {
+  const products = sampleState().products;
+  products[0].quantity = 3;
+  const next = reorderSupplierProducts(products, '肉屋', ['sample-2', 'sample-1']);
+  assert.deepEqual(next.map(p => p.id), ['sample-2', 'sample-1', 'sample-3', 'sample-4', 'sample-5', 'sample-6']);
+  assert.equal(next[1], products[0]);
+  assert.equal(next[1].quantity, 3);
+  assert.equal(next[1].note, '1kgパック');
+  assert.deepEqual(products.map(p => p.id), ['sample-1', 'sample-2', 'sample-3', 'sample-4', 'sample-5', 'sample-6']);
+  assert.throws(() => reorderSupplierProducts(products, '肉屋', ['sample-1', 'sample-1']));
+  assert.throws(() => reorderSupplierProducts(products, '肉屋', ['sample-1', 'sample-3']));
+  assert.throws(() => reorderSupplierProducts(products, '肉屋', ['sample-1']));
 });

@@ -154,3 +154,13 @@ export function prepareCsvImport(text, products) {
   });
   return { additions, skipped };
 }
+
+export function reorderSupplierProducts(products, supplier, ids) {
+  const items = products.filter(p => p.supplier === supplier);
+  const known = new Map(items.map(p => [p.id, p]));
+  if (ids.length !== items.length || new Set(ids).size !== ids.length || ids.some(id => !known.has(id))) {
+    throw new Error('商品の並び順が正しくありません');
+  }
+  let index = 0;
+  return products.map(p => p.supplier === supplier ? known.get(ids[index++]) : p);
+}

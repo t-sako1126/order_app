@@ -1,4 +1,4 @@
-import { STORAGE_KEY, MAX_QUANTITY, sampleState, validateState, changeQuantity, groups, totals, orderText, prepareBulkProducts, supplierOrder, moveSupplier, searchProducts, exportCsv, prepareCsvImport } from './model.js?v=7';
+import { STORAGE_KEY, MAX_QUANTITY, sampleState, validateState, changeQuantity, groups, totals, orderText, prepareBulkProducts, supplierOrder, moveSupplier, searchProducts, exportCsv, prepareCsvImport, reorderSupplierProducts } from './model.js?v=8';
 
 const main = document.querySelector('#main');
 const dialog = document.querySelector('#dialog');
@@ -79,7 +79,7 @@ function listView() {
   const supplierGroups = groups(state.products, false, state.supplierOrder);
   return `<div class="workspace"><section aria-label="業者別の商品一覧">
     <input id="product-search" class="product-search" type="search" aria-label="商品検索" placeholder="商品名で検索" value="${escape(productQuery)}" autocomplete="off">
-    <div class="list-tools"><div class="csv-tools"><button class="icon-button" data-action="csv-import" aria-label="CSVインポート" title="CSVインポート"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 15v5h16v-5"/></svg></button><button class="icon-button" data-action="csv-export" aria-label="CSVエクスポート" title="CSVエクスポート" ${state.products.length ? '' : 'disabled'}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m-4 4 4-4 4 4M4 15v5h16v-5"/></svg></button></div></div>
+
     ${state.products.length ? `<div class="filters" aria-label="業者の絞り込み"><button class="filter" data-filter-all aria-pressed="${activeSupplier === null}">すべて<span class="filter-count">${state.products.length}</span></button>
     ${supplierGroups.map(g => `<button class="filter" data-filter="${escape(g.supplier)}" aria-pressed="${activeSupplier === g.supplier}" title="長押ししてドラッグで並び替え（キーボード：Alt＋左右）">${escape(g.supplier)}<span class="filter-count">${g.items.length}</span></button>`).join('')}</div>` : ''}
     <div id="product-results">${catalogueView()}</div>
@@ -96,14 +96,18 @@ function reviewView() {
       </section>${summary(true)}</div>` : '<div class="empty"><h2>商品が選択されていません</h2><a href="#list" class="primary">発注リストへ</a></div>');
 }
 
+function csvTools() {
+  return `<div class="list-tools"><div class="csv-tools"><button class="icon-button" data-action="csv-import" aria-label="CSVインポート" title="CSVインポート"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 15v5h16v-5"/></svg></button><button class="icon-button" data-action="csv-export" aria-label="CSVエクスポート" title="CSVエクスポート" ${state.products.length ? '' : 'disabled'}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m-4 4 4-4 4 4M4 15v5h16v-5"/></svg></button></div></div>`;
+}
+
 function managementView() {
   const cards = groups(state.products, false, state.supplierOrder).map(({ supplier, items }) =>
-    `<article class="supplier-card management-card"><div class="supplier-heading"><h2>${escape(supplier)}</h2><span>${items.length} 商品</span></div>
+    `<article class="supplier-card management-card" data-managed-list="${escape(supplier)}"><div class="supplier-heading"><h2>${escape(supplier)}</h2><span>${items.length} 商品</span></div>
       ${items.map(p => `<div class="managed-row" data-managed-id="${escape(p.id)}">
         <button class="delete-product" data-delete-product="${escape(p.id)}" aria-label="${escape(p.name)}を削除" title="商品を削除"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></svg></button>
-        <div class="managed-content"><div class="product-info"><h3 class="product-name">${escape(p.name)}</h3><textarea class="product-note" data-note="${escape(p.id)}" aria-label="${escape(p.name)}の備考" rows="1" maxlength="500" placeholder="備考を追加（任意）">${escape(p.note)}</textarea></div></div>
+        <div class="managed-content"><button class="reorder-product" data-reorder-product="${escape(p.id)}" aria-label="${escape(p.name)}を並び替え" title="長押しで並び替え（Alt＋上下）"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14M5 16h14"/></svg></button><div class="product-info"><h3 class="product-name">${escape(p.name)}</h3><textarea class="product-note" data-note="${escape(p.id)}" aria-label="${escape(p.name)}の備考" rows="1" maxlength="500" placeholder="備考を追加（任意）">${escape(p.note)}</textarea></div></div>
       </div>`).join('')}</article>`).join('');
-  return heading('商品管理') + `<div class="management-layout"><section aria-label="管理する商品">${cards || '<div class="empty"><h2>商品がありません</h2></div>'}${state.products.some(p => p.sample) ? '<button class="text-link" data-action="clear-samples">サンプル商品を削除</button>' : ''}</section><aside class="management-actions"><a class="primary" href="#add">商品を追加</a></aside></div>`;
+  return heading('商品管理') + csvTools() + `<div class="management-layout"><section aria-label="管理する商品">${cards || '<div class="empty"><h2>商品がありません</h2></div>'}${state.products.some(p => p.sample) ? '<button class="text-link" data-action="clear-samples">サンプル商品を削除</button>' : ''}</section><aside class="management-actions"><a class="primary" href="#add">商品を追加</a></aside></div>`;
 }
 
 function addView() {
@@ -238,104 +242,154 @@ main.addEventListener('keydown', event => {
   if (row && event.key === 'Escape') setProductReveal(row, false);
 });
 
-// Horizontal swipes scroll the tabs; holding a touch tab starts reordering.
+// Let the browser scroll touches normally. Only a held item becomes draggable.
 function cancelTabGesture() {
-  if (!tabGesture) return;
-  clearTimeout(tabGesture.timer);
-  cancelAnimationFrame(tabGesture.frame);
-  tabGesture.button?.classList.remove('dragging');
-  if (tabGesture.filters.hasPointerCapture(tabGesture.id)) tabGesture.filters.releasePointerCapture(tabGesture.id);
+  const g = tabGesture;
+  if (!g) return;
   tabGesture = null;
+  clearTimeout(g.timer);
+  cancelAnimationFrame(g.frame);
+  g.ghost?.remove();
+  g.item.classList.remove('drag-source');
+  document.body.classList.remove('reordering');
+  if (g.container.hasPointerCapture(g.id)) g.container.releasePointerCapture(g.id);
 }
 
-function updateTabDrag() {
+function startItemDrag(g) {
+  if (tabGesture !== g) return;
+  cancelProductSwipe();
+  main.querySelectorAll('.managed-row.revealed').forEach(row => setProductReveal(row, false));
+  g.dragging = true;
+  suppressTabClick = true;
+  const r = g.item.getBoundingClientRect();
+  g.offsetX = g.x - r.left; g.offsetY = g.y - r.top;
+  g.ghost = g.item.cloneNode(true);
+  g.ghost.querySelectorAll('[id]').forEach(e => e.removeAttribute('id'));
+  g.ghost.removeAttribute('id');
+  g.ghost.setAttribute('aria-hidden', 'true');
+  g.ghost.classList.add('drag-ghost');
+  Object.assign(g.ghost.style, { width: `${r.width}px`, height: `${r.height}px` });
+  document.body.append(g.ghost);
+  g.item.classList.add('drag-source');
+  document.body.classList.add('reordering');
+  if (!g.touch) g.container.setPointerCapture(g.id);
+  updateItemDrag();
+}
+
+function updateItemDrag() {
   const g = tabGesture;
-  if (!g?.reordering) return;
-  const bounds = g.filters.getBoundingClientRect();
-  const edge = g.x < bounds.left + 28 ? -7 : g.x > bounds.right - 28 ? 7 : 0;
-  if (edge) g.filters.scrollLeft += edge;
-  const others = [...g.filters.querySelectorAll('[data-filter]')].filter(b => b !== g.button);
-  const before = others.find(b => { const r = b.getBoundingClientRect(); return g.x < r.left + r.width / 2; });
-  if (before) g.filters.insertBefore(g.button, before); else g.filters.append(g.button);
-  g.frame = requestAnimationFrame(updateTabDrag);
+  if (!g?.dragging) return;
+  g.ghost.style.left = `${g.x - g.offsetX}px`;
+  g.ghost.style.top = `${g.y - g.offsetY - 6}px`;
+  if (g.kind === 'supplier') {
+    const r = g.container.getBoundingClientRect();
+    const speed = g.x < r.left + 30 ? -6 : g.x > r.right - 30 ? 6 : 0;
+    g.container.scrollLeft += speed;
+  } else {
+    // Keep the fixed navigation and add button clear while dragging down a list.
+    const speed = g.y < 90 ? -7 : g.y > innerHeight - 180 ? 7 : 0;
+    if (speed) window.scrollBy(0, speed);
+  }
+  const others = [...g.container.querySelectorAll(g.selector)].filter(item => item !== g.item);
+  const before = others.find(item => {
+    const r = item.getBoundingClientRect();
+    return g.kind === 'supplier' ? g.x < r.left + r.width / 2 : g.y < r.top + r.height / 2;
+  });
+  if (before) g.container.insertBefore(g.item, before); else g.container.append(g.item);
+  g.frame = requestAnimationFrame(updateItemDrag);
+}
+
+function prepareItemGesture(target, x, y, id, touch) {
+  const handle = target.closest('[data-filter], [data-reorder-product]');
+  if (!handle) return;
+  cancelTabGesture();
+  const product = handle.hasAttribute('data-reorder-product');
+  const item = product ? handle.closest('.managed-row') : handle;
+  const container = product ? handle.closest('[data-managed-list]') : handle.closest('.filters');
+  const g = tabGesture = { item, container, kind: product ? 'product' : 'supplier',
+    selector: product ? '.managed-row' : '[data-filter]', x, y, startX: x, startY: y, id, touch, dragging: false };
+  suppressTabClick = false;
+  if (touch) g.timer = setTimeout(() => startItemDrag(g), 400);
+}
+
+function finishItemDrag() {
+  const g = tabGesture;
+  if (!g) return;
+  const dragging = g.dragging;
+  const scroll = g.container.scrollLeft;
+  if (dragging) {
+    if (g.kind === 'supplier') state.supplierOrder = [...g.container.querySelectorAll('[data-filter]')].map(b => b.dataset.filter);
+    else state.products = reorderSupplierProducts(state.products, g.container.dataset.managedList,
+      [...g.container.querySelectorAll('.managed-row')].map(row => row.dataset.managedId));
+  }
+  cancelTabGesture();
+  if (dragging) {
+    save(); render();
+    if (g.kind === 'supplier') main.querySelector('.filters').scrollLeft = scroll;
+  }
+  setTimeout(() => { suppressTabClick = false; }, 0);
 }
 
 main.addEventListener('pointerdown', event => {
-  const filters = event.target.closest('.filters');
-  if (!filters || !event.isPrimary || event.button !== 0) return;
-  cancelTabGesture();
-  suppressTabClick = false;
-  const button = event.target.closest('[data-filter]');
-  const g = tabGesture = { filters, button, id: event.pointerId, startX: event.clientX,
-    startY: event.clientY, x: event.clientX, scroll: filters.scrollLeft, moved: false,
-    touch: event.pointerType !== 'mouse', reordering: false };
-  if (g.touch && button) g.timer = setTimeout(() => {
-    if (tabGesture !== g || g.moved) return;
-    g.reordering = true;
-    filters.setPointerCapture(g.id);
-    button.classList.add('dragging');
-    updateTabDrag();
-  }, 350);
+  if (event.pointerType !== 'mouse' || !event.isPrimary || event.button !== 0) return;
+  prepareItemGesture(event.target, event.clientX, event.clientY, event.pointerId, false);
 });
-
 main.addEventListener('pointermove', event => {
   const g = tabGesture;
-  if (!g || g.id !== event.pointerId) return;
-  g.x = event.clientX;
-  const dx = g.x - g.startX;
-  const dy = event.clientY - g.startY;
-  if (!g.moved && !g.reordering && Math.hypot(dx, dy) > 7) {
-    g.moved = true;
-    g.filters.setPointerCapture(g.id);
-    clearTimeout(g.timer);
-    if (Math.abs(dy) > Math.abs(dx)) { cancelTabGesture(); return; }
-    if (!g.touch && g.button) {
-      g.reordering = true;
-      g.button.classList.add('dragging');
-      updateTabDrag();
-    }
-  }
-  if (g.moved || g.reordering) {
-    suppressTabClick = true;
-    if (!g.reordering) g.filters.scrollLeft = g.scroll - dx;
-  }
+  if (!g || g.touch || g.id !== event.pointerId) return;
+  g.x = event.clientX; g.y = event.clientY;
+  if (!g.dragging && Math.hypot(g.x - g.startX, g.y - g.startY) > 8) startItemDrag(g);
 });
-
 main.addEventListener('pointerup', event => {
-  const g = tabGesture;
-  if (!g || g.id !== event.pointerId) return;
-  const order = [...g.filters.querySelectorAll('[data-filter]')].map(b => b.dataset.filter);
-  const scroll = g.filters.scrollLeft;
-  const supplier = g.button?.dataset.filter;
-  const reordered = g.reordering;
-  suppressTabClick = g.moved || reordered;
-  setTimeout(() => { suppressTabClick = false; }, 0);
-  cancelTabGesture();
-  if (reordered) {
-    state.supplierOrder = order;
-    save(); render();
-    main.querySelector('.filters').scrollLeft = scroll;
-    [...main.querySelectorAll('[data-filter]')].find(b => b.dataset.filter === supplier)?.focus({ preventScroll: true });
-  }
+  if (tabGesture && !tabGesture.touch && tabGesture.id === event.pointerId) finishItemDrag();
 });
 main.addEventListener('pointercancel', () => {
-  const reorder = tabGesture?.reordering;
-  cancelTabGesture();
-  if (reorder) render();
+  if (tabGesture && !tabGesture.touch) { const dragging = tabGesture.dragging; cancelTabGesture(); if (dragging) render(); }
 });
+main.addEventListener('touchstart', event => {
+  if (event.touches.length !== 1) { cancelTabGesture(); return; }
+  const t = event.touches[0];
+  prepareItemGesture(event.target, t.clientX, t.clientY, t.identifier, true);
+}, { passive: true });
+main.addEventListener('touchmove', event => {
+  const g = tabGesture;
+  if (!g?.touch) return;
+  const t = [...event.touches].find(t => t.identifier === g.id);
+  if (!t) return;
+  g.x = t.clientX; g.y = t.clientY;
+  if (g.dragging) { event.preventDefault(); suppressTabClick = true; }
+  else if (Math.hypot(g.x - g.startX, g.y - g.startY) > 8) cancelTabGesture();
+}, { passive: false });
+main.addEventListener('touchend', () => { if (tabGesture?.touch) finishItemDrag(); });
+main.addEventListener('touchcancel', () => {
+  if (tabGesture?.touch) { const dragging = tabGesture.dragging; cancelTabGesture(); if (dragging) render(); }
+});
+window.addEventListener('blur', () => { const dragging = tabGesture?.dragging; cancelTabGesture(); if (dragging) render(); });
 main.addEventListener('contextmenu', event => {
-  if (event.target.closest('.filters')) event.preventDefault();
+  if (event.target.closest('.filters, .reorder-product')) event.preventDefault();
 });
 main.addEventListener('keydown', event => {
-  const button = event.target.closest('[data-filter]');
-  if (!button || !event.altKey || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+  if (event.key === 'Escape' && tabGesture?.dragging) { cancelTabGesture(); render(); return; }
+  const handle = event.target.closest('[data-filter], [data-reorder-product]');
+  if (!handle || !event.altKey) return;
+  const product = handle.hasAttribute('data-reorder-product');
+  const keys = product ? ['ArrowUp', 'ArrowDown'] : ['ArrowLeft', 'ArrowRight'];
+  if (!keys.includes(event.key)) return;
   event.preventDefault();
-  const supplier = button.dataset.filter;
-  const scroll = button.closest('.filters').scrollLeft;
-  state.supplierOrder = moveSupplier(state.products, state.supplierOrder, supplier, event.key === 'ArrowLeft' ? -1 : 1);
+  if (product) {
+    const p = state.products.find(p => p.id === handle.dataset.reorderProduct);
+    const ids = state.products.filter(item => item.supplier === p.supplier).map(item => item.id);
+    const from = ids.indexOf(p.id), to = from + (event.key === keys[0] ? -1 : 1);
+    if (to < 0 || to >= ids.length) return;
+    [ids[from], ids[to]] = [ids[to], ids[from]];
+    state.products = reorderSupplierProducts(state.products, p.supplier, ids);
+  } else state.supplierOrder = moveSupplier(state.products, state.supplierOrder, handle.dataset.filter, event.key === keys[0] ? -1 : 1);
+  const scroll = handle.closest('.filters')?.scrollLeft;
+  const id = product ? handle.dataset.reorderProduct : handle.dataset.filter;
   save(); render();
-  main.querySelector('.filters').scrollLeft = scroll;
-  [...main.querySelectorAll('[data-filter]')].find(b => b.dataset.filter === supplier)?.focus({ preventScroll: true });
+  if (!product) main.querySelector('.filters').scrollLeft = scroll;
+  [...main.querySelectorAll(product ? '[data-reorder-product]' : '[data-filter]')]
+    .find(b => (product ? b.dataset.reorderProduct : b.dataset.filter) === id)?.focus({ preventScroll: true });
 });
 
 main.addEventListener('focusin', event => {
@@ -401,7 +455,7 @@ main.addEventListener('click', async event => {
     }
     return;
   }
-  if (button.closest('.filters') && suppressTabClick) { suppressTabClick = false; return; }
+  if (button.closest('.filters, .managed-row') && suppressTabClick) { suppressTabClick = false; return; }
   if (button.dataset.action === 'csv-export') {
     const url = URL.createObjectURL(new Blob([exportCsv(state.products, state.supplierOrder)], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
@@ -447,7 +501,7 @@ main.addEventListener('click', async event => {
     if (await confirmAction('数量を0に戻しますか', '商品と備考はそのまま残り，選択した数量だけが0になります．', '0に戻す')) {
       state.products.forEach(p => { p.quantity = 0; });
       const saved = save(); render(true);
-      if (saved) notify('数量を0に戻しました．');
+      if (saved) notify('数量を0に戻しました');
     }
   } else if (button.dataset.action === 'clear-samples') {
     if (await confirmAction('サンプルを取り除きますか', 'サンプル商品の数量と備考も削除されます．自分で登録した商品は残ります．', 'サンプルを消す')) {
@@ -493,7 +547,7 @@ document.querySelector('#csv-file').addEventListener('change', async event => {
       state.products.push(...current.additions.map(p => ({ ...p, id: crypto.randomUUID() })));
       const saved = save();
       activeSupplier = null;
-      if (pageName() === 'list') render(); else location.hash = 'list';
+      if (pageName() === 'manage') render(); else location.hash = 'manage';
       if (saved) notify(`${current.additions.length}商品を読み込みました．`);
     }
   } catch (cause) { notify(cause.message || 'CSVを読み込めませんでした．', true); }
