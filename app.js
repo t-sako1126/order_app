@@ -1,4 +1,4 @@
-import { STORAGE_KEY, MAX_QUANTITY, sampleState, validateState, changeQuantity, groups, totals, orderText, prepareBulkProducts, supplierOrder, moveSupplier, searchProducts, exportCsv, prepareCsvImport, reorderSupplierProducts } from './model.js?v=8';
+import { STORAGE_KEY, MAX_QUANTITY, sampleState, validateState, changeQuantity, groups, totals, orderText, prepareBulkProducts, supplierOrder, moveSupplier, searchProducts, exportCsv, prepareCsvImport, reorderSupplierProducts } from './model.js?v=9';
 
 const main = document.querySelector('#main');
 const dialog = document.querySelector('#dialog');
@@ -107,7 +107,7 @@ function managementView() {
         <button class="delete-product" data-delete-product="${escape(p.id)}" aria-label="${escape(p.name)}を削除" title="商品を削除"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></svg></button>
         <div class="managed-content"><button class="reorder-product" data-reorder-product="${escape(p.id)}" aria-label="${escape(p.name)}を並び替え" title="長押しで並び替え（Alt＋上下）"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14M5 16h14"/></svg></button><div class="product-info"><h3 class="product-name">${escape(p.name)}</h3><textarea class="product-note" data-note="${escape(p.id)}" aria-label="${escape(p.name)}の備考" rows="1" maxlength="500" placeholder="備考を追加（任意）">${escape(p.note)}</textarea></div></div>
       </div>`).join('')}</article>`).join('');
-  return heading('商品管理') + csvTools() + `<div class="management-layout"><section aria-label="管理する商品">${cards || '<div class="empty"><h2>商品がありません</h2></div>'}${state.products.some(p => p.sample) ? '<button class="text-link" data-action="clear-samples">サンプル商品を削除</button>' : ''}</section><aside class="management-actions"><a class="primary" href="#add">商品を追加</a></aside></div>`;
+  return `<div class="page-heading management-heading"><h1>商品管理</h1>${csvTools()}</div>` + `<div class="management-layout"><section aria-label="管理する商品">${cards || '<div class="empty"><h2>商品がありません</h2></div>'}${state.products.some(p => p.sample) ? '<button class="text-link" data-action="clear-samples">サンプル商品を削除</button>' : ''}</section><aside class="management-actions"><a class="primary" href="#add">商品を追加</a></aside></div>`;
 }
 
 function addView() {

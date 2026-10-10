@@ -173,3 +173,7 @@ main[data-page="list"] .filters { margin-top: 18px; }
 .drag-ghost { position: fixed; z-index: 10; margin: 0; pointer-events: none; opacity: 1; background: var(--card); color: var(--ink); border-radius: 18px; box-shadow: 0 12px 30px #432d2033; transform: scale(1.04); overflow: hidden; }
 .drag-ghost .delete-product { display: none; }
 body.reordering { cursor: grabbing; user-select: none; -webkit-user-select: none; }
+
+.management-heading { align-items: center; gap: 12px; }
+.management-heading h1 { white-space: nowrap; }
+.management-heading .list-tools { margin: 0; flex-shrink: 0; }
