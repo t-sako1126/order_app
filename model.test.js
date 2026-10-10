@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sampleState, validateState, changeQuantity, groups, totals, orderText, prepareBulkProducts, supplierOrder, moveSupplier, searchProducts, exportCsv, parseCsv, prepareCsvImport, reorderSupplierProducts } from './model.js';
+import { sampleState, validateState, changeQuantity, groups, totals, orderText, prepareBulkProducts, supplierOrder, moveSupplier, searchProducts, exportCsv, parseCsv, prepareCsvImport, reorderSupplierProducts, editProduct, deleteProducts } from './model.js';
 
 test('quantity stays between zero and 999', () => {
   assert.equal(changeQuantity(0, -1), 0);
@@ -131,4 +131,38 @@ test('product reordering preserves other suppliers and all notes and quantities'
   assert.throws(() => reorderSupplierProducts(products, '肉屋', ['sample-1', 'sample-1']));
   assert.throws(() => reorderSupplierProducts(products, '肉屋', ['sample-1', 'sample-3']));
   assert.throws(() => reorderSupplierProducts(products, '肉屋', ['sample-1']));
+});
+
+
+test('editing moves a product to another supplier and preserves its quantity and identity', () => {
+  const products = sampleState().products;
+  products[0].quantity = 7;
+  const next = editProduct(products, 'sample-1', { name: ' 鶏むね肉 ', supplier: ' 食品卸 ', note: ' 2kg ' });
+  assert.deepEqual(next[0], { ...products[0], name: '鶏むね肉', supplier: '食品卸', note: '2kg' });
+  assert.equal(next[1], products[1]);
+  assert.equal(products[0].name, '鶏もも肉');
+  assert.equal(validateState({ version: 1, products: next }), true);
+  assert.deepEqual(supplierOrder(next, ['肉屋', '八百屋', '食品卸']), ['肉屋', '八百屋', '食品卸']);
+});
+
+test('editing permits unchanged names but rejects collisions, missing products and invalid fields', () => {
+  const products = sampleState().products;
+  assert.doesNotThrow(() => editProduct(products, 'sample-1', products[0]));
+  assert.throws(() => editProduct(products, 'sample-1', products[1]), /同じ業者/);
+  assert.throws(() => editProduct(products, 'missing', products[0]), /削除/);
+  for (const fields of [{ name: ' ' }, { supplier: ' ' }, { name: '長'.repeat(81) }, { note: '長'.repeat(501) }])
+    assert.throws(() => editProduct(products, 'sample-1', { ...products[0], ...fields }), /文字/);
+});
+
+test('bulk deletion removes only selected identities across suppliers and supports deleting all', () => {
+  const products = sampleState().products;
+  products[1].quantity = 5;
+  const next = deleteProducts(products, ['sample-1', 'sample-3', 'missing', 'sample-1']);
+  assert.deepEqual(next.map(p => p.id), ['sample-2', 'sample-4', 'sample-5', 'sample-6']);
+  assert.equal(next[0], products[1]);
+  assert.equal(next[0].quantity, 5);
+  assert.equal(products.length, 6);
+  assert.deepEqual(deleteProducts(products, []), products);
+  assert.deepEqual(deleteProducts(products, products.map(p => p.id)), []);
+  assert.equal(validateState({ version: 1, products: next }), true);
 });

@@ -164,3 +164,18 @@ export function reorderSupplierProducts(products, supplier, ids) {
   let index = 0;
   return products.map(p => p.supplier === supplier ? known.get(ids[index++]) : p);
 }
+
+export function editProduct(products, id, fields) {
+  if (!products.some(p => p.id === id)) throw new Error('この商品は削除されています．商品管理に戻ってください．');
+  const name = fields.name.trim(), supplier = fields.supplier.trim(), note = fields.note.trim();
+  if (!name || !supplier || name.length > 80 || supplier.length > 80 || note.length > 500)
+    throw new Error('商品名と業者名は1〜80文字，備考は500文字以内で入力してください．');
+  if (products.some(p => p.id !== id && p.name === name && p.supplier === supplier))
+    throw new Error('同じ業者に同じ商品名が登録されています．');
+  return products.map(p => p.id === id ? { ...p, name, supplier, note } : p);
+}
+
+export function deleteProducts(products, ids) {
+  const selected = new Set(ids);
+  return products.filter(p => !selected.has(p.id));
+}
